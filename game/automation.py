@@ -411,6 +411,15 @@ class Automation:
         
         delay = self.get_delay(mjai_action, gi, game_state.last_reaction_time)  # initial delay
         action_steps:list[ActionStep] = [ActionStepDelay(delay)]
+        if mjai_type == MjaiType.HORA and self.st.auto_emoji_before_hu:
+            try:
+                if self._is_emoji_on_cooldown():
+                    LOGGER.debug("Skip pre-hu emoji due to cooldown.")
+                else:
+                    action_steps.extend(self._emoji_steps(0))
+                    self.last_emoji_time = time.time()
+            except Exception as e:
+                LOGGER.warning("Failed to add pre-hu emoji action for %s: %s", mjai_action, e, exc_info=True)
         action_steps.extend(more_steps)
         pai = mjai_action.get('pai',"")  
         calc_time = game_state.last_reaction_time
@@ -502,27 +511,58 @@ class Automation:
     def automate_send_emoji(self):
         """ Send emoji given chance
         """
-        if not self.can_automate(True, UiState.IN_GAME):
-            return
-        if time.time() - self.last_emoji_time < self.st.auto_emoji_intervel:  # prevent spamming
-            return
-        roll = random.random()
-        if roll > self.st.auto_reply_emoji_rate:   # send when roll < rate
-            return
+        try:
+            if not self.can_automate(True, UiState.IN_GAME):
+                return False
+            roll = random.random()
+            if roll > self.st.auto_reply_emoji_rate:   # send when roll < rate
+                return False
 
-        
-        idx = random.randint(0, 8)
-        x,y = Positions.EMOJI_BUTTON
-        steps = [ActionStepDelay(random.uniform(1.5, 3.0)), ActionStepMove(x*self.scaler, y*self.scaler)]
-        steps.append(ActionStepDelay(random.uniform(0.1, 0.2)))
-        steps.append(ActionStepClick())
-        x,y = Positions.EMOJIS[idx]
-        steps.append(ActionStepMove(x*self.scaler,y*self.scaler))
-        steps.append(ActionStepDelay(random.uniform(0.1, 0.2)))
-        steps.append(ActionStepClick())
-        self._task = AutomationTask(self.executor, f"SendEmoji{idx}", f"Send emoji {idx}")
-        self._task.start_action_steps(steps, None)
-        self.last_emoji_time = time.time()
+            idx = random.randint(0, 8)
+            return self.send_emoji(idx, reason="reply_emoji", with_cooldown=True)
+        except Exception as e:
+            LOGGER.warning("Failed to automate reply emoji: %s", e, exc_info=True)
+            return False
+
+    def _is_emoji_on_cooldown(self) -> bool:
+        """Return true if emoji sending is still on cooldown."""
+        return time.time() - self.last_emoji_time < self.st.auto_emoji_intervel
+
+    def _emoji_steps(self, idx:int, delay:float=0.0) -> list[ActionStep]:
+        """Build action steps for opening emoji panel and selecting one emoji."""
+        x, y = Positions.EMOJI_BUTTON
+        steps:list[ActionStep] = []
+        if delay > 0:
+            steps.append(ActionStepDelay(delay))
+        steps.append(ActionStepMove(x * self.scaler, y * self.scaler))
+        steps.append(ActionStepDelay(random.uniform(0.08, 0.18)))
+        steps.append(ActionStepClick(random.randint(60, 100)))
+        x, y = Positions.EMOJIS[idx]
+        steps.append(ActionStepMove(x * self.scaler, y * self.scaler))
+        steps.append(ActionStepDelay(random.uniform(0.08, 0.18)))
+        steps.append(ActionStepClick(random.randint(60, 100)))
+        return steps
+
+    def send_emoji(self, index:int, reason:str="", with_cooldown:bool=True) -> bool:
+        """Send a specific emoji index with optional cooldown protection."""
+        try:
+            if not self.can_automate(True, UiState.IN_GAME):
+                return False
+            if index < 0 or index >= len(Positions.EMOJIS):
+                LOGGER.warning("Emoji index out of range: %s, reason=%s", index, reason)
+                return False
+            if with_cooldown and self._is_emoji_on_cooldown():
+                LOGGER.debug("Skip sending emoji index=%d due to cooldown. reason=%s", index, reason)
+                return False
+
+            steps = self._emoji_steps(index, random.uniform(1.5, 3.0))
+            self._task = AutomationTask(self.executor, f"SendEmoji{index}", f"Send emoji {index}, reason={reason}")
+            self._task.start_action_steps(steps, None)
+            self.last_emoji_time = time.time()
+            return True
+        except Exception as e:
+            LOGGER.warning("Failed to send emoji index=%s, reason=%s: %s", index, reason, e, exc_info=True)
+            return False
     
     def automate_idle_mouse_move(self, prob:float):
         """ move mouse around to avoid AFK. according to probability"""

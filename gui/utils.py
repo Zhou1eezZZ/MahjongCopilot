@@ -4,6 +4,7 @@ from tkinter import ttk, font
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from common.mj_helper import MJAI_TILE_2_UNICODE, ActionUnicode
+from common.log_helper import LOGGER
 
 
 class GuiStyle:
@@ -45,27 +46,66 @@ class GuiStyle:
 
 def add_hover_text(widget:tk.Widget, text:str):
     """ Add a hover string label when mouse is over the widget"""
-    widget.bind("<Enter>", lambda event: _on_hover(widget, text))
+    hover_text = str(text).strip() if text is not None else ""
+    if not hover_text:
+        try:
+            hover_text = str(widget.cget("text")).strip()
+        except Exception:
+            hover_text = ""
+
+    if not hover_text:
+        return
+
+    widget.bind("<Enter>", lambda event: _on_hover(widget, hover_text))
     widget.bind("<Leave>", lambda event: _on_leave_hover(widget))
     
     
 def _on_hover(wdg:tk.Widget, text:str):
     # display a hover label with text
-    toplvl = wdg.winfo_toplevel()
-    wdg.original_bg = wdg.cget("background")
-    wdg.configure(background="light blue")
-    wdg.hover_text = tk.Label(toplvl, text=text, bg="lightyellow", highlightbackground="black", highlightthickness=1)
-    x = wdg.winfo_rootx() - toplvl.winfo_rootx() + wdg.winfo_width()
-    y = wdg.winfo_rooty() - toplvl.winfo_rooty() + wdg.winfo_height() //2
-    wdg.hover_text.place(x=x, y=y, anchor=tk.W)
+    if not text:
+        return
+    try:
+        toplvl = wdg.winfo_toplevel()
+        try:
+            wdg.original_bg = wdg.cget("background")
+            wdg.configure(background="light blue")
+        except Exception:
+            wdg.original_bg = None
+
+        if hasattr(wdg, "hover_text") and wdg.hover_text is not None:
+            try:
+                wdg.hover_text.destroy()
+            except Exception:
+                ...
+        wdg.hover_text = tk.Label(
+            toplvl,
+            text=text,
+            bg="lightyellow",
+            fg="black",
+            highlightbackground="black",
+            highlightthickness=1,
+        )
+        x = wdg.winfo_rootx() - toplvl.winfo_rootx() + wdg.winfo_width()
+        y = wdg.winfo_rooty() - toplvl.winfo_rooty() + wdg.winfo_height() //2
+        wdg.hover_text.place(x=x, y=y, anchor=tk.W)
+    except Exception as e:
+        LOGGER.warning("Failed to create hover tooltip for widget %s: %s", wdg, e, exc_info=True)
     
 
 def _on_leave_hover(wdg:tk.Widget):
     # destroy the hover label
-    if hasattr(wdg, "hover_text"):
-        wdg.hover_text.destroy()
-    if hasattr(wdg, "original_bg"):
-        wdg.configure(background=wdg.original_bg)
+    try:
+        if hasattr(wdg, "hover_text") and wdg.hover_text is not None:
+            wdg.hover_text.destroy()
+            wdg.hover_text = None
+    except Exception as e:
+        LOGGER.warning("Failed to destroy hover tooltip for widget %s: %s", wdg, e, exc_info=True)
+
+    try:
+        if hasattr(wdg, "original_bg") and wdg.original_bg is not None:
+            wdg.configure(background=wdg.original_bg)
+    except Exception as e:
+        LOGGER.warning("Failed to restore background for widget %s: %s", wdg, e, exc_info=True)
         
 
 def crop_image_from_top_left(image:Image, width, height):

@@ -218,6 +218,25 @@ class SettingsWindow(tk.Toplevel):
         self.auto_drag_dahai_var = tk.BooleanVar(value=self.st.auto_dahai_drag)
         _entry = ttk.Checkbutton(main_frame, variable=self.auto_drag_dahai_var, text=self.st.lan().DRAG_DAHAI, width=std_wid)
         _entry.grid(row=cur_row, column=3, **args_entry)
+
+        # emoji strategy toggles
+        cur_row += 1
+        self.auto_emoji_before_hu_var = tk.BooleanVar(value=self.st.auto_emoji_before_hu)
+        emoji_before_hu_entry = ttk.Checkbutton(
+            main_frame,
+            variable=self.auto_emoji_before_hu_var,
+            text=self.st.lan().AUTO_EMOJI_BEFORE_HU,
+            width=std_wid * 2,
+        )
+        emoji_before_hu_entry.grid(row=cur_row, column=1, **args_entry)
+        self.auto_emoji_on_chi_robbed_var = tk.BooleanVar(value=self.st.auto_emoji_on_chi_robbed)
+        emoji_on_chi_robbed_entry = ttk.Checkbutton(
+            main_frame,
+            variable=self.auto_emoji_on_chi_robbed_var,
+            text=self.st.lan().AUTO_EMOJI_ON_CHI_ROBBED,
+            width=std_wid * 2,
+        )
+        emoji_on_chi_robbed_entry.grid(row=cur_row, column=2, columnspan=2, **args_entry)
         
         # randomize choice 
         cur_row += 1       
@@ -328,6 +347,16 @@ class SettingsWindow(tk.Toplevel):
         except Exception as _e:
             messagebox.showerror("⚠", self.st.lan().RANDOM_DELAY_RANGE)
             return
+        try:
+            auto_emoji_before_hu_new = self.auto_emoji_before_hu_var.get()
+        except Exception as e:
+            LOGGER.warning("Failed to parse auto_emoji_before_hu setting: %s", e, exc_info=True)
+            auto_emoji_before_hu_new = False
+        try:
+            auto_emoji_on_chi_robbed_new = self.auto_emoji_on_chi_robbed_var.get()
+        except Exception as e:
+            LOGGER.warning("Failed to parse auto_emoji_on_chi_robbed setting: %s", e, exc_info=True)
+            auto_emoji_on_chi_robbed_new = False
         delay_lower_new = max(0,delay_lower_new)
         delay_upper_new = max(delay_lower_new, delay_upper_new)
         
@@ -356,7 +385,9 @@ class SettingsWindow(tk.Toplevel):
         self.st.auto_dahai_drag = self.auto_drag_dahai_var.get()
         self.st.auto_random_move = self.random_move_var.get()
         self.st.ai_randomize_choice = randomized_choice_new
-        self.st.auto_reply_emoji_rate = reply_emoji_new        
+        self.st.auto_reply_emoji_rate = reply_emoji_new
+        self.st.auto_emoji_before_hu = auto_emoji_before_hu_new
+        self.st.auto_emoji_on_chi_robbed = auto_emoji_on_chi_robbed_new
         self.st.delay_random_lower = delay_lower_new
         self.st.delay_random_upper = delay_upper_new
         

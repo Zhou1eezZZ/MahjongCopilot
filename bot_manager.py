@@ -396,7 +396,16 @@ class BotManager:
                 # Game Flow Message (in-Game message)
                 # Feed msg to game_state for processing with AI bot
                 LOGGER.debug('Game msg: %s', str(liqimsg))
+                pre_pending_reaction = None
+                try:
+                    pre_pending_reaction = self.game_state.get_pending_reaction()
+                except Exception as e:
+                    LOGGER.warning("Failed to get pre-message pending reaction: %s", e, exc_info=True)
                 reaction = self.game_state.input(liqimsg)
+                try:
+                    self._process_chi_robbed_emoji(liqimsg, pre_pending_reaction)
+                except Exception as e:
+                    LOGGER.warning("Failed to process chi-robbed emoji automation: %s", e, exc_info=True)
                 if reaction:
                     self._do_automation(reaction)
                 else:
@@ -422,6 +431,40 @@ class BotManager:
                 self.automation.automate_send_emoji()
         else:           # move mouse around randomly
             self.automation.automate_idle_mouse_move(0.05)
+
+    def _process_chi_robbed_emoji(self, liqimsg:dict, pre_pending_reaction:dict):
+        """Send emoji when a pending CHI is interrupted by an ActionHule message."""
+        try:
+            if not self.st.auto_emoji_on_chi_robbed:
+                return
+            if not pre_pending_reaction:
+                return
+            if pre_pending_reaction.get('type') != MjaiType.CHI:
+                return
+            if liqimsg.get('method') != liqi.LiqiMethod.ActionPrototype:
+                return
+            liqi_data = liqimsg.get('data', {})
+            if liqi_data.get('name') != liqi.LiqiAction.Hule:
+                return
+            sent = self.automation.send_emoji(3, reason="chi_robbed_by_hule", with_cooldown=True)
+            LOGGER.info(
+                "CHI robbed by HULE detected. trigger_emoji=%s, step=%s, flow=%s",
+                sent,
+                liqi_data.get('step'),
+                liqimsg.get('id'),
+            )
+        except Exception as e:
+            LOGGER.warning(
+                "Error on chi-robbed emoji flow. pre_pending=%s, msg=%s, err=%s",
+                pre_pending_reaction,
+                {
+                    "id": liqimsg.get("id"),
+                    "method": liqimsg.get("method"),
+                    "name": liqimsg.get("data", {}).get("name"),
+                },
+                e,
+                exc_info=True,
+            )
         
     def _process_end_game(self):
         # End game processes

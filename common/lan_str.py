@@ -66,6 +66,8 @@ class LanStr:
     DRAG_DAHAI = "Mouse drag dahai"
     RANDOM_CHOICE = "Randomize AI Choice"
     REPLY_EMOJI_CHANCE = "Reply Emoji Rate"
+    AUTO_EMOJI_BEFORE_HU = "Send emoji before hu (default #1)"
+    AUTO_EMOJI_ON_CHI_ROBBED = "Send emoji when chi gets robbed by hu (default #4)"
     RANDOM_DELAY_RANGE = "Base Delay Range (sec)"    
     GAME_LEVELS = ["Bronze", "Silver", "Gold", "Jade", "Throne"]
     GAME_MODES = ["4-P East","4-P South","3-P East","3-P South"]
@@ -203,6 +205,8 @@ class LanStrZHS(LanStr):
     DRAG_DAHAI = "鼠标拖拽出牌"
     RANDOM_CHOICE = "AI 选项随机化(去重)"
     REPLY_EMOJI_CHANCE = "回复表情概率"
+    AUTO_EMOJI_BEFORE_HU = "胡牌前发表情(默认#1)"
+    AUTO_EMOJI_ON_CHI_ROBBED = "吃牌被截胡时发表情(默认#4)"
     
     RANDOM_DELAY_RANGE = "基础延迟随机范围(秒)"
     GAME_LEVELS = ["铜之间", "银之间", "金之间", "玉之间", "王座之间"]
