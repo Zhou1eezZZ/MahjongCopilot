@@ -5,13 +5,14 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('resources', 'resources'), ('liqi_proto', 'liqi_proto'), ('models', 'models'), ('mitm_config', 'mitm_config'), ('proxinject', 'proxinject'), ('settings.json', '.'), ('version', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
+    optimize=0,
 )
 pyz = PYZ(a.pure)
 
@@ -31,7 +32,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['resources\\icon.ico'],
 )
 coll = COLLECT(
     exe,
@@ -41,4 +41,10 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name='MahjongCopilot',
+)
+app = BUNDLE(
+    coll,
+    name='MahjongCopilot.app',
+    icon=None,
+    bundle_identifier=None,
 )

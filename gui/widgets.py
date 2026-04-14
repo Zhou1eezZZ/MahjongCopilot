@@ -1,5 +1,4 @@
 """ Custom widgets for GUI"""
-from pathlib import Path
 from typing import Callable
 import tkinter as tk
 from tkinter import ttk
@@ -229,7 +228,7 @@ class ToolBar(tk.Frame):
     
     def add_button(self, text:str, img_file:str, command) -> tk.Button:
         """ Add a button on toolbar"""        
-        img = tk.PhotoImage(file = Path(Folder.RES) / img_file)
+        img = tk.PhotoImage(file=sub_file(Folder.RES, img_file))
         img = img.subsample(int(img.width()/self.height), int(img.height()/self.height))
         btn = tk.Button(self, image=img, width=self.height, height=self.height, command=command)
         btn.image = img  # Keep a reference to prevent image from being garbage collected
@@ -244,7 +243,7 @@ class ToolBar(tk.Frame):
         """ Replace button image"""
         if btn.img_file == img_file:
             return
-        img = tk.PhotoImage(file = Path(Folder.RES) / img_file)
+        img = tk.PhotoImage(file=sub_file(Folder.RES, img_file))
         img = img.subsample(int(img.width()/self.height), int(img.height()/self.height))
         btn.config(image=img)
         btn.image = img  # Keep a reference

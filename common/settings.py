@@ -1,6 +1,8 @@
 """ Settings file and options """
 
 import json
+import pathlib
+import shutil
 from typing import Callable
 from .log_helper import LOGGER
 from .lan_str import LanStr, LAN_OPTIONS
@@ -73,7 +75,11 @@ class Settings:
     def load_json(self) -> dict:
         """ Load settings from json file into dict"""
         try:
-            full  = utils.sub_file(".", self._json_file)
+            full  = utils.settings_file(self._json_file)
+            if not pathlib.Path(full).exists():
+                fallback = utils.sub_file(".", self._json_file)
+                if fallback != full and pathlib.Path(fallback).exists():
+                    shutil.copyfile(fallback, full)
             with open(full, 'r',encoding='utf-8') as file:
                 settings_dict:dict = json.load(file)
         except Exception as e:
@@ -87,7 +93,8 @@ class Settings:
         # save all non-private variables (not starting with "_") into dict
         settings_to_save = {key: value for key, value in self.__dict__.items()
                             if not key.startswith('_') and not callable(value)}
-        with open(self._json_file, 'w', encoding='utf-8') as file:
+        full = utils.settings_file(self._json_file)
+        with open(full, 'w', encoding='utf-8') as file:
             json.dump(settings_to_save, file, indent=4, separators=(', ', ': '))
     
     def _get_value(self, key:str, default_value:any, validator:Callable[[any],bool]=None) -> any:

@@ -120,6 +120,23 @@ def can_auto_update() -> bool:
     return is_windows()
 
 
+def app_data_root() -> pathlib.Path | None:
+    """Return writable app data root for packaged app when needed."""
+    if is_macos() and getattr(sys, "frozen", False):
+        root = pathlib.Path.home() / "Library" / "Application Support" / "MahjongCopilot"
+        root.mkdir(parents=True, exist_ok=True)
+        return root
+    return None
+
+
+def settings_file(file_name:str) -> str:
+    """Return settings file path, preferring writable app data on packaged macOS."""
+    data_root = app_data_root()
+    if data_root:
+        return str((data_root / file_name).resolve())
+    return sub_file(".", file_name)
+
+
 def open_file_with_os(path_or_url:str) -> tuple[bool, str]:
     """Open a local path or URL with the host OS default app."""
     if not path_or_url:
@@ -148,9 +165,27 @@ def open_file_with_os(path_or_url:str) -> tuple[bool, str]:
 
 def sub_folder(folder_name:str) -> pathlib.Path:
     """ return the subfolder Path, create it if not exists"""
+    mutable_folders = {Folder.LOG, Folder.BROWSER_DATA, Folder.MITM_CONF, Folder.TEMP}
+    if folder_name in mutable_folders:
+        data_root = app_data_root()
+        if data_root:
+            subfolder = data_root / folder_name
+            if not subfolder.exists():
+                subfolder.mkdir(parents=True, exist_ok=True)
+            return subfolder.resolve()
+
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = pathlib.Path(sys._MEIPASS).parent   # pylint: disable=W0212,E1101
+        # PyInstaller stores bundled files under _MEIPASS. Depending on bundle mode,
+        # app resources can be under _MEIPASS itself, its parent, or Contents/Resources.
+        meipass = pathlib.Path(sys._MEIPASS)    # pylint: disable=W0212,E1101
+        base_candidates = [meipass]
+        if meipass.parent.name == "Contents":
+            base_candidates.append(meipass.parent / "Resources")
+        base_candidates.append(meipass.parent)
+        base_path = next(
+            (candidate for candidate in base_candidates if (candidate / folder_name).exists()),
+            base_candidates[0]
+        )
     except Exception:  #pylint: disable=broad-except
         base_path = pathlib.Path('.')
         
