@@ -42,6 +42,7 @@ class Settings:
         # for local model
         self.model_file:str = self._get_value("model_file", "mortal.pth")
         self.model_file_3p:str = self._get_value("model_file_3p", "mortal_3p.pth")
+        self.model_file = self._resolve_existing_4p_model(self.model_file)
         # akagi ot model
         self.akagi_ot_url:str = self._get_value("akagi_ot_url", "")
         self.akagi_ot_apikey:str = self._get_value("akagi_ot_apikey", "")
@@ -62,6 +63,9 @@ class Settings:
         self.auto_emoji_on_chi_robbed:bool = self._get_value("auto_emoji_on_chi_robbed", False, self.valid_bool)
         self.auto_dahai_drag:bool = self._get_value("auto_dahai_drag", True, self.valid_bool)
         self.ai_randomize_choice:int = self._get_value("ai_randomize_choice", 1, lambda x: 0 <= x <= 5)
+        self.ai_randomize_top_n:int = self._get_value("ai_randomize_top_n", 3, lambda x: 3 <= x <= 6)
+        self.ai_near_tie_prefer_low:bool = self._get_value("ai_near_tie_prefer_low", False, self.valid_bool)
+        self.ai_style_preset:str = self._get_value("ai_style_preset", "balanced", self.valid_ai_style_preset)
         self.delay_random_lower:float = self._get_value("delay_random_lower", 1, lambda x: 0 <= x )
         self.delay_random_upper:float = self._get_value(
             "delay_random_upper",max(2, self.delay_random_lower), lambda x: x >= self.delay_random_lower)
@@ -169,3 +173,50 @@ class Settings:
             if url.startswith(p):
                 return True
         return False
+
+    def valid_ai_style_preset(self, value:str) -> bool:
+        """Return true if ai style preset is valid."""
+        return value in ("stable", "balanced", "free")
+
+    def _resolve_existing_4p_model(self, model_file:str) -> str:
+        """Ensure configured 4P model file exists; fallback to an available bundled model."""
+        try:
+            current = str(model_file).strip()
+            current_path = pathlib.Path(utils.sub_file(utils.Folder.MODEL, current))
+            if current and current_path.exists() and current_path.is_file():
+                return current
+
+            model_dir = pathlib.Path(utils.sub_folder(utils.Folder.MODEL))
+            if not model_dir.exists():
+                return current
+
+            files = [
+                p for p in model_dir.iterdir()
+                if p.is_file() and p.suffix.lower() in (".pth", ".pt", ".bin")
+            ]
+            if not files:
+                return current
+
+            candidates = [p for p in files if "3p" not in p.name.lower()]
+            if not candidates:
+                candidates = files
+
+            # Prefer filenames that look like 4P/default model names; fallback to newest file.
+            def score(path:pathlib.Path) -> int:
+                name = path.name.lower()
+                rank = 0
+                if "4p" in name:
+                    rank += 5
+                if "model_v" in name or "mortal" in name:
+                    rank += 3
+                if "best" in name:
+                    rank += 1
+                return rank
+
+            candidates.sort(key=lambda p: (score(p), p.stat().st_mtime), reverse=True)
+            picked = candidates[0].name
+            LOGGER.warning("Configured 4P model '%s' is missing. Fallback to '%s'.", current, picked)
+            return picked
+        except Exception as e:
+            LOGGER.warning("Failed resolving 4P model file '%s': %s", model_file, e, exc_info=True)
+            return model_file

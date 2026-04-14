@@ -433,53 +433,93 @@ class Automation:
         return True
     
     def randomize_action(self, action:dict, gi:GameInfo) -> dict:
-        """ Randomize ai choice: pick according to probaility from top 3 options"""
+        """Randomize AI dahai choice using top-N candidates and optional near-tie bias."""
         n = self.st.ai_randomize_choice     # randomize strength. 0 = no random, 5 = according to probability
         if n == 0:
             return action
         mjai_type = action['type']
         if mjai_type == MjaiType.DAHAI:
-            orig_pai = action['pai']
-            options:dict = action['meta_options']            # e.g. {'1m':0.95, 'P':0.045, 'N':0.005, ...}
-            # get dahai options (tile only) from top 3
-            top_ops:list = [(k,v) for k,v in options[:3] if k in MJAI_TILES_SORTED]        
-            #pick from top3 according to probability
-            power = 1 / (0.2 * n)
-            sum_probs = sum([v**power for k,v in top_ops])
-            top_ops_powered = [(k, v**power/sum_probs) for k,v in top_ops]
-            
-            # 1. Calculate cumulative probabilities
-            cumulative_probs = [top_ops_powered[0][1]]
-            for i in range(1, len(top_ops_powered)):
-                cumulative_probs.append(cumulative_probs[-1] + top_ops_powered[i][1])
+            try:
+                orig_pai = action['pai']
+                options = action.get('meta_options', [])
+                if not options:
+                    return action
 
-            # 2. Pick an option based on a random number
-            rand_prob = random.random()  # Random float: 0.0 <= x < 1.0
-            chosen_pai = orig_pai  # Default in case no option is selected, for safety
-            prob = top_ops_powered[0][1]
-            for i, cum_prob in enumerate(cumulative_probs):
-                if rand_prob < cum_prob:
-                    chosen_pai = top_ops_powered[i][0]  # This is the selected key based on probability
-                    prob = top_ops_powered[i][1]        # the probability
-                    orig_prob = top_ops[i][1]
-                    break
-                
-            if chosen_pai == orig_pai:  # return original action if no change
-                change_str = f"{action['pai']} Unchanged"
-            else:
-                change_str = f"{action['pai']} -> {chosen_pai}"
-            
-            # generate new action for changed tile
-            tsumogiri = chosen_pai == gi.my_tsumohai
-            new_action = {
-                'type': MjaiType.DAHAI,
-                'actor': action['actor'],
-                'pai': chosen_pai,
-                'tsumogiri': tsumogiri
-            }
-            msg = f"Randomized dahai: {change_str} ([{n}] {orig_prob*100:.1f}% -> {prob*100:.1f}%)"
-            LOGGER.debug(msg)
-            return new_action
+                # Limit candidate window by both user setting and actual available AI options.
+                top_n = self.st.ai_randomize_top_n
+                top_n = max(3, min(6, int(top_n)))
+                n_eff = min(top_n, len(options))
+                top_pool = options[:n_eff]
+                top_ops:list[tuple[str, float]] = [
+                    (tile, float(prob))
+                    for tile, prob in top_pool
+                    if tile in MJAI_TILES_SORTED
+                ]
+                if len(top_ops) <= 1:
+                    return action
+
+                power = 1 / (0.2 * n)
+                base_weights = [max(0.0, prob) ** power for _, prob in top_ops]
+                if sum(base_weights) <= 0:
+                    return action
+
+                weights = base_weights
+                near_tie_applied = False
+                if self.st.ai_near_tie_prefer_low:
+                    probs = [prob for _, prob in top_ops]
+                    p_max = max(probs)
+                    p_min = min(probs)
+                    spread = p_max - p_min
+                    if spread <= 0.20:
+                        denom = spread + 1e-6
+                        biased_weights = []
+                        for (_tile, prob), base_weight in zip(top_ops, base_weights):
+                            inv = (p_max - prob) / denom
+                            bias_mult = 1 + 2.5 * inv
+                            biased_weights.append(base_weight * bias_mult)
+                        if sum(biased_weights) > 0:
+                            weights = biased_weights
+                            near_tie_applied = True
+
+                sum_weights = sum(weights)
+                if sum_weights <= 0:
+                    return action
+                probs_norm = [w / sum_weights for w in weights]
+
+                rand_prob = random.random()  # Random float: 0.0 <= x < 1.0
+                cumulative = 0.0
+                chosen_idx = 0
+                for idx, prob_norm in enumerate(probs_norm):
+                    cumulative += prob_norm
+                    if rand_prob <= cumulative:
+                        chosen_idx = idx
+                        break
+                chosen_pai = top_ops[chosen_idx][0]
+                sampled_prob = probs_norm[chosen_idx]
+                ai_prob = top_ops[chosen_idx][1]
+
+                if chosen_pai == orig_pai:  # return original action if no change
+                    change_str = f"{action['pai']} Unchanged"
+                else:
+                    change_str = f"{action['pai']} -> {chosen_pai}"
+
+                tsumogiri = chosen_pai == gi.my_tsumohai
+                new_action = {
+                    'type': MjaiType.DAHAI,
+                    'actor': action['actor'],
+                    'pai': chosen_pai,
+                    'tsumogiri': tsumogiri
+                }
+                msg = (
+                    f"Randomized dahai: {change_str} "
+                    f"(rand={n}, top_n={n_eff}, near_tie={near_tie_applied}, "
+                    f"ai={ai_prob*100:.1f}%, sampled={sampled_prob*100:.1f}%)"
+                )
+                LOGGER.debug(msg)
+                return new_action
+            except Exception as e:
+                LOGGER.warning("Failed randomize_action for %s: %s", action, e, exc_info=True)
+                return action
         # other MJAI types
         else:
             return action

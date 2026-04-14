@@ -72,6 +72,18 @@ class LanStr:
     GAME_LEVELS = ["Bronze", "Silver", "Gold", "Jade", "Throne"]
     GAME_MODES = ["4-P East","4-P South","3-P East","3-P South"]
     MOUSE_RANDOM_MOVE = "Randomize Move"
+    SECTION_BASIC = "Basic"
+    SECTION_MODEL = "Model"
+    SECTION_AUTOMATION = "Automation"
+    SECTION_ADVANCED = "Advanced"
+    AI_STYLE_PRESET = "Play Style Preset"
+    AI_STYLE_STABLE = "Stable (Closer to optimal)"
+    AI_STYLE_BALANCED = "Balanced (Recommended)"
+    AI_STYLE_FREE = "Free (More diverse)"
+    AI_RANDOMIZE_TOP_N = "Randomize Candidate Top N"
+    AI_NEAR_TIE_PREFER_LOW = "Near tie prefers lower-probability option"
+    SHOW_ADVANCED = "Show Advanced"
+    HIDE_ADVANCED = "Hide Advanced"
     
     # Status
     MAIN_THREAD  = "Main Thread"
@@ -212,6 +224,18 @@ class LanStrZHS(LanStr):
     GAME_LEVELS = ["铜之间", "银之间", "金之间", "玉之间", "王座之间"]
     GAME_MODES = ["四人东","四人南","三人东","三人南"]
     MOUSE_RANDOM_MOVE = "鼠标移动随机化"
+    SECTION_BASIC = "基础"
+    SECTION_MODEL = "模型"
+    SECTION_AUTOMATION = "自动化"
+    SECTION_ADVANCED = "高级"
+    AI_STYLE_PRESET = "出牌风格预设"
+    AI_STYLE_STABLE = "稳(更贴近最优)"
+    AI_STYLE_BALANCED = "均衡(推荐)"
+    AI_STYLE_FREE = "自由(更多变化)"
+    AI_RANDOMIZE_TOP_N = "随机候选 Top N"
+    AI_NEAR_TIE_PREFER_LOW = "近似平局时偏向低概率选项"
+    SHOW_ADVANCED = "展开高级参数"
+    HIDE_ADVANCED = "收起高级参数"
     
     # Status
     MAIN_THREAD  = "主程序"

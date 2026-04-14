@@ -81,7 +81,7 @@ class GameBrowser:
 
         # read all subfolder names from Folder.CRX and form extension list
         if enable_chrome_ext:
-            extensions_list = list_children(Folder.CHROME_EXT, True, False, True)
+            extensions_list = list_children(str(utils.sub_folder(Folder.CHROME_EXT)), True, False, True)
             # extensions_list = []
             # for root, dirs, files in os.walk(utils.sub_folder(Folder.CHROME_EXT)):
             #     for extension_dir in dirs:
