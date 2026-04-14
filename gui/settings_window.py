@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from common import utils
 from common.utils import Folder
 from common.utils import list_children
 from common.log_helper import LOGGER
@@ -107,9 +108,16 @@ class SettingsWindow(tk.Toplevel):
         
         # proxy inject
         self.proxy_inject_var = tk.BooleanVar(value=self.st.enable_proxinject)
-        check_proxy_inject = ttk.Checkbutton(
+        self.check_proxy_inject = ttk.Checkbutton(
             main_frame, variable=self.proxy_inject_var, text=self.st.lan().CLIENT_INJECT_PROXY, width=std_wid*2)
-        check_proxy_inject.grid(row=cur_row, column=2, columnspan=2, **args_entry)  
+        self.check_proxy_inject.grid(row=cur_row, column=2, columnspan=2, **args_entry)
+        if not utils.can_proxinject():
+            self.proxy_inject_var.set(False)
+            self.check_proxy_inject.configure(state=tk.DISABLED)
+            add_hover_text(
+                self.check_proxy_inject,
+                getattr(self.st.lan(), "PROXY_INJECT_UNSUPPORTED", "Only available on Windows"),
+            )
 
         # sep
         cur_row += 1
@@ -271,6 +279,8 @@ class SettingsWindow(tk.Toplevel):
             return
         upstream_proxy_new = self.upstream_proxy_var.get()
         proxy_inject_new = self.proxy_inject_var.get()
+        if not utils.can_proxinject():
+            proxy_inject_new = False
         if upstream_proxy_new != self.st.upstream_proxy or mitm_port_new != self.st.mitm_port or proxy_inject_new != self.st.enable_proxinject:
             self.mitm_proxinject_updated = True
         

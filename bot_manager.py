@@ -236,7 +236,11 @@ class BotManager:
     def _create_mitm_and_proxinject(self):
         # create mitm and proxinject threads
         # enable proxyinject requires socks5, which disables upstream proxy
-        if self.st.enable_proxinject:
+        enable_proxinject = self.st.enable_proxinject and utils.can_proxinject()
+        if self.st.enable_proxinject and not utils.can_proxinject():
+            LOGGER.warning("Proxy injection is enabled in settings but unsupported on this platform. Ignoring it.")
+
+        if enable_proxinject:
             mode = mitm.SOCKS5
             LOGGER.debug("Enabling proxyinject requires socks5, and it disables upstream proxy")
         else:
@@ -247,7 +251,7 @@ class BotManager:
         if not res:
             self.main_thread_exception = utils.MitmCertNotInstalled(self.mitm_server.cert_file)
         
-        if self.st.enable_proxinject:
+        if enable_proxinject:
             self.proxy_injector.start(self.st.inject_process_name, "127.0.0.1", self.st.mitm_port)
         
 

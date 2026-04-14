@@ -4,7 +4,6 @@ The GUI is a desktop app based on tkinter library
 GUI functions: controlling browser settings, displaying AI guidance info, game status
 """
 
-import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -222,7 +221,9 @@ class MainGUI(tk.Tk):
 
     def _on_btn_log_clicked(self):
         # LOGGER.debug('Open log')
-        os.startfile(LogHelper.log_file_name)
+        ok, err = utils.open_file_with_os(LogHelper.log_file_name)
+        if not ok:
+            messagebox.showerror(self.st.lan().OPEN_LOG_FILE, err, parent=self)
         
 
     def _on_btn_settings_clicked(self):

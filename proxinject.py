@@ -4,8 +4,7 @@ import threading
 import subprocess
 import pathlib
 import time
-import sys
-from common.utils import Folder, sub_run_args
+from common.utils import Folder, sub_run_args, can_proxinject
 from common.log_helper import LOGGER
 
 class ProxyInjector:
@@ -24,7 +23,7 @@ class ProxyInjector:
             process_name(str): name of the process to inject
             proxy_ip(str): ip address of the proxy server
             proxy_port(int): port of the proxy server"""
-        if sys.platform != 'win32':
+        if not can_proxinject():
             LOGGER.warning("Proxy inject only supports windows. skip start")
             return
         if self.is_running():

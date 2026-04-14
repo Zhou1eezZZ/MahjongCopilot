@@ -26,12 +26,14 @@ class LanStr:
     DOWNLOAD_UPDATE = "Download Update"
     START_UPDATE = "Update & Restart"
     CHECK_FOR_UPDATE = "Check Update"
+    OPEN_WEBSITE = "Open Website"
     CHECKING_UPDATE = "Checking for new update..."
     UPDATE_AVAILABLE = "New update available"
     NO_UPDATE_FOUND = "No new update found"
     DOWNLOADING = "Downloading..."
     UNZIPPING = "Unzipping..."
     UPDATE_PREPARED = "Update prepared. Click the button to update and restart."
+    MANUAL_UPDATE_ONLY = "Auto update is unavailable on this platform. Open website for manual update."
 
     ### Settings
     SAVE = "Save"
@@ -45,6 +47,7 @@ class LanStr:
     ENABLE_CHROME_EXT = "Enable Chrome Extensioins"
     LANGUAGE = "Display Language"
     CLIENT_INJECT_PROXY = "Auto Proxy Majsoul Windows Client"
+    PROXY_INJECT_UNSUPPORTED = "This option is only available on Windows."
     MODEL_TYPE = "AI Model Type"
     AI_MODEL_FILE = "Local Model File (4P)"
     AI_MODEL_FILE_3P = "Local Model File (3P)"
@@ -159,6 +162,7 @@ class LanStrZHS(LanStr):
     # help
     DOWNLOAD_UPDATE = "下载更新"
     START_UPDATE = "开始更新"
+    OPEN_WEBSITE = "打开网站"
     UPDATE_AVAILABLE = "有新的更新可用"    
     CHECK_FOR_UPDATE = "检查更新"
     CHECKING_UPDATE = "正在检查更新..."
@@ -166,6 +170,7 @@ class LanStrZHS(LanStr):
     UNZIPPING = "解压中..."
     DOWNLOADING = "下载中..."
     UPDATE_PREPARED = "更新已准备好。点击按钮更新并重启。"    
+    MANUAL_UPDATE_ONLY = "此平台不支持自动更新。请打开网站手动更新。"
     
     # Settings
     SAVE = "保存"
@@ -178,6 +183,7 @@ class LanStrZHS(LanStr):
     ENABLE_CHROME_EXT = "启用浏览器插件"
     LANGUAGE = "显示语言"
     CLIENT_INJECT_PROXY = "自动代理雀魂 Windows 客户端" 
+    PROXY_INJECT_UNSUPPORTED = "该选项仅支持 Windows。"
     MODEL_TYPE = "AI 模型类型"
     AI_MODEL_FILE = "本地模型文件(四麻)"
     AI_MODEL_FILE_3P = "本地模型文件(三麻)"

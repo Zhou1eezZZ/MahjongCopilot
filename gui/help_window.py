@@ -7,6 +7,7 @@ from tkhtmlview import HTMLScrolledText
 
 from common.log_helper import LOGGER
 from common.settings import Settings
+from common import utils
 from updater import Updater, UpdateStatus
 from .utils import GUI_STYLE
 
@@ -72,6 +73,12 @@ class HelpWindow(tk.Toplevel):
         self.update_button.configure(state=tk.DISABLED)
         if messagebox.askokcancel(self.st.lan().START_UPDATE, self.st.lan().UPDATE_PREPARED):
             self.updater.start_update()
+
+    def _open_update_site(self):
+        """Open website for manual update guidance."""
+        ok, err = utils.open_file_with_os(utils.WEBSITE + "/help")
+        if not ok:
+            messagebox.showerror(self.st.lan().HELP, err, parent=self)
             
     
     def _refresh_ui(self):
@@ -81,6 +88,19 @@ class HelpWindow(tk.Toplevel):
             if self.updater.help_html:
                 self.html_text = self.updater.help_html
                 self.html_box.set_html(self.html_text)
+
+        if not utils.can_auto_update():
+            self.update_str_var.set(
+                getattr(lan, "MANUAL_UPDATE_ONLY",
+                        "Auto update is unavailable on this platform. Open website for manual update.")
+            )
+            self.update_button.configure(
+                text=getattr(lan, "OPEN_WEBSITE", "Open Website"),
+                state=tk.NORMAL,
+                command=self._open_update_site
+            )
+            self.after(100, self._refresh_ui)
+            return
         
         # update button and status
         match self.updater.update_status:

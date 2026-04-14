@@ -27,6 +27,9 @@ class Settings:
         self.mitm_port:int = self._get_value("mitm_port", 10999, self.valid_mitm_port)
         self.upstream_proxy:str = self._get_value("upstream_proxy","")  # mitm upstream proxy server e.g. http://ip:port
         self.enable_proxinject:bool = self._get_value("enable_proxinject", False, self.valid_bool)
+        if self.enable_proxinject and not utils.can_proxinject():
+            LOGGER.warning("Proxy injection is unsupported on this platform. Disabling setting.")
+            self.enable_proxinject = False
         self.inject_process_name:str = self._get_value("inject_process_name", "jantama_mahjongsoul")
         self.language:str = self._get_value("language", list(LAN_OPTIONS.keys())[-1], self.valid_language)  # language code
         self.enable_overlay:bool = self._get_value("enable_overlay", True, self.valid_bool) # not shown

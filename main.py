@@ -16,6 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import os
+
 from gui.main_gui import MainGUI
 from common import utils
 from common.log_helper import LogHelper
@@ -25,6 +27,8 @@ from bot_manager import BotManager
 
 def main():
     """ Main entry point """
+    # Keep Playwright browser binaries local to the app/venv by default.
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
     LogHelper.config_logging()
     setting = Settings()
     # utils.set_dpi_awareness()

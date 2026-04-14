@@ -218,13 +218,19 @@ class MitmController:
         else:
             LOGGER.info("MITM cert not installed:\n%s", text)
 
+        if utils.is_macos():
+            guide = utils.cert_manual_install_guide(self.cert_file)
+            LOGGER.warning("MITM cert requires manual install on macOS.\n%s", guide)
+            return False
+
         LOGGER.info("Installing MITM certificate: %s", self.cert_file)
         install_success, msg = utils.install_root_cert(self.cert_file)
         if install_success:
             LOGGER.info("Installed MITM certificate successfully. Output:\n%s",msg)
             return True
         else:
-            LOGGER.error("Failed to install MITM certificate. Please install manually. Output:\n%s",msg)
+            guide = utils.cert_manual_install_guide(self.cert_file)
+            LOGGER.error("Failed to install MITM certificate. %s\nOutput:\n%s", guide, msg)
             return False
 
             

@@ -60,10 +60,42 @@ set PLAYWRIGHT_BROWSERS_PATH=0
 playwright install chromium
 python main.py
 ```
+
+### macOS 开发运行 / macOS source run
+
+推荐 Python 3.11（`match/case` 语法要求 3.10+）。
+
+```bash
+git clone https://github.com/latorc/MahjongCopilot.git
+cd MahjongCopilot
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+export PLAYWRIGHT_BROWSERS_PATH=0
+playwright install chromium
+python main.py
+```
+
+#### macOS MITM 证书手动安装 / macOS MITM cert manual install
+
+首次启动后如果提示证书未安装，请在终端手动执行：
+
+```bash
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "<repo>/mitm_config/mitmproxy-ca-cert.cer"
+```
+
+把 `<repo>` 替换为本地仓库目录。
+
 ### 配置模型
 本程序支持几种模型来源。其中，本地模型（Local）是基于 Akagi 兼容的 Mortal 模型。要获取 Akagi 的模型，请参见 <a href="https://github.com/shinkuan/Akagi" target="_blank"> Akagi Github </a> 的说明。
 ### Model Configuration
 This program supports different types of AI models. The 'Local' Model type uses Mortal models compatible with Akagi. To acquire Akagi's models, please refer to <a href="https://github.com/shinkuan/Akagi" target="_blank"> Akagi Github </a>.
+
+### macOS 已知限制 / macOS known limitations
+
+- 不支持 Windows 客户端代理注入（proxinject）。
+- 自动更新流程仅支持 Windows；macOS 请通过网站手动更新。
+- 本地 3P 模型依赖额外二进制；若缺失会自动降级为仅 4P 本地可用。
 
 
 ## 截图 / Screenshots

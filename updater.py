@@ -189,11 +189,10 @@ class Updater:
                         
     def prepare_update(self):
         """ Prepare update in thread: download and unzip file"""
-        if sys.platform == "win32":     # check system support
-            pass
-        else:
+        if not utils.can_auto_update():
             self.update_status = UpdateStatus.ERROR
-            self.update_exception = RuntimeError("Update only supports Windows for now.")
+            self.update_exception = RuntimeError(
+                f"Auto update is unavailable on this platform. Please update manually from {WEBSITE}")
             return
         
         def update_task():
@@ -221,61 +220,36 @@ class Updater:
         
     def start_update(self):
         """ Call batch command to start update and then restart main program """
+        if not utils.can_auto_update():
+            self.update_status = UpdateStatus.ERROR
+            self.update_exception = RuntimeError(
+                f"Auto update is unavailable on this platform. Please update manually from {WEBSITE}")
+            return
         
-        if sys.platform == "win32":
-            exec_path = sys.executable
-            exec_name = os.path.basename(exec_path)
-            root_folder = str(utils.sub_folder("."))
-            update_folder = str(utils.sub_folder(Folder.TEMP)/Folder.UPDATE)
-            cmd = f"""
-            @echo off
-            echo Updating {exec_name} ...
-            timeout /t 3 /nobreak
-            echo Killing process {exec_name}...
-            taskkill /IM {exec_name} /F
-            timeout /t 3 /nobreak
-            echo copying new file...
-            set "sourceDir={update_folder}\*"
-            set "destDir={root_folder}"
-            xcopy %sourceDir% %destDir% /s /e /y
-            echo Update completed. Restarting {exec_name}...            
-            start {exec_name}
-            timeout /t 5 /nobreak
-            """
-            # save it to a batchfile
-            batch_file = utils.sub_file(Folder.TEMP, "update.bat")
-            with open(batch_file, "w", encoding="utf-8") as f:
-                f.write(cmd)
-            subprocess.Popen(
-                ['cmd.exe', '/c', batch_file],
-                creationflags=subprocess.CREATE_NEW_CONSOLE)
-            sys.exit(0)
-
-        elif sys.platform == "darwin":
-            exec_name = os.path.basename(sys.executable)
-            root_folder = str(utils.sub_folder("."))
-            update_folder = str(utils.sub_folder(Folder.TEMP)/Folder.UPDATE)
-            cmd = f"""
-            #!/bin/bash
-            echo "Updating {exec_name} in 5 seconds..."
-            sleep 5
-            echo "Killing program {exec_name}..."
-            pkill -f {exec_name}
-            sleep 3
-            echo "Copying..."
-            cp -R "{update_folder}/"* "{root_folder}/"
-            echo "Update completed. Restarting {exec_name}..."
-            open "{root_folder}/{exec_name}"
-            """
-            # Save it to a shell script
-            script_file = utils.sub_file(Folder.TEMP, "update.sh")
-            with open(script_file, "w", encoding='utf-8') as f:
-                f.write(cmd)
-            os.chmod(script_file, 0o755)  # Make the script executable
-            
-            # Execute the script in a new Terminal window
-            subprocess.Popen(["open", "-a", "Terminal.app", script_file])
-            
-        else:
-            # not supported
-            pass
+        exec_path = sys.executable
+        exec_name = os.path.basename(exec_path)
+        root_folder = str(utils.sub_folder("."))
+        update_folder = str(utils.sub_folder(Folder.TEMP)/Folder.UPDATE)
+        cmd = f"""
+        @echo off
+        echo Updating {exec_name} ...
+        timeout /t 3 /nobreak
+        echo Killing process {exec_name}...
+        taskkill /IM {exec_name} /F
+        timeout /t 3 /nobreak
+        echo copying new file...
+        set "sourceDir={update_folder}\*"
+        set "destDir={root_folder}"
+        xcopy %sourceDir% %destDir% /s /e /y
+        echo Update completed. Restarting {exec_name}...            
+        start {exec_name}
+        timeout /t 5 /nobreak
+        """
+        # save it to a batchfile
+        batch_file = utils.sub_file(Folder.TEMP, "update.bat")
+        with open(batch_file, "w", encoding="utf-8") as f:
+            f.write(cmd)
+        subprocess.Popen(
+            ['cmd.exe', '/c', batch_file],
+            creationflags=subprocess.CREATE_NEW_CONSOLE)
+        sys.exit(0)

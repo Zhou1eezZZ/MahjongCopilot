@@ -3,6 +3,7 @@ no logging in this file because logging might not have been initialized yet
 """
 
 from enum import Enum, auto
+import os
 import pathlib
 import sys
 import ctypes
@@ -85,7 +86,8 @@ def error_to_str(error:Exception, lan:LanStr) -> str:
     if isinstance(error, LocalModelException):
         return lan.LOCAL_MODEL_ERROR
     elif isinstance(error, MitmCertNotInstalled):
-        return lan.MITM_CERT_NOT_INSTALLED + f"{error.args}"    
+        detail = f" {error.args[0]}" if error.args else ""
+        return lan.MITM_CERT_NOT_INSTALLED + detail
     elif isinstance(error, MITMException):
         return lan.MITM_SERVER_ERROR    
     elif isinstance(error, BotNotSupportingMode):
@@ -96,6 +98,52 @@ def error_to_str(error:Exception, lan:LanStr) -> str:
         return lan.CONNECTION_ERROR + f': {error}'
     else:
         return str(error)
+
+
+def is_windows() -> bool:
+    """Return True on Windows."""
+    return sys.platform == "win32"
+
+
+def is_macos() -> bool:
+    """Return True on macOS."""
+    return sys.platform == "darwin"
+
+
+def can_proxinject() -> bool:
+    """Return True if process-level proxy injection is supported."""
+    return is_windows()
+
+
+def can_auto_update() -> bool:
+    """Return True if in-app auto update is supported."""
+    return is_windows()
+
+
+def open_file_with_os(path_or_url:str) -> tuple[bool, str]:
+    """Open a local path or URL with the host OS default app."""
+    if not path_or_url:
+        return False, "Empty path or URL"
+
+    target = path_or_url.strip()
+    if not target.startswith(("http://", "https://")):
+        target = str(pathlib.Path(target).expanduser().resolve())
+
+    try:
+        if is_windows():
+            os.startfile(target)  # pylint: disable=no-member
+            return True, ""
+        if is_macos():
+            result = subprocess.run(["open", target], **sub_run_args())  #pylint:disable=subprocess-run-check
+        else:
+            result = subprocess.run(["xdg-open", target], **sub_run_args())  #pylint:disable=subprocess-run-check
+
+        text = (result.stdout or "") + (result.stderr or "")
+        if result.returncode == 0:
+            return True, text
+        return False, text
+    except Exception as e:  #pylint:disable=broad-except
+        return False, str(e)
 
 
 def sub_folder(folder_name:str) -> pathlib.Path:
@@ -135,15 +183,16 @@ def wait_for_file(file:str, timeout:int=5) -> bool:
 
 def sub_run_args() -> dict:
     """ return **args for subprocess.run"""
-    startup_info = subprocess.STARTUPINFO()
-    startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startup_info.wShowWindow = subprocess.SW_HIDE
     args = {
-        'capture_output':True, 
+        'capture_output':True,
         'text': True,
         'check': False,
-        'shell': True,
-        'startupinfo': startup_info}
+    }
+    if is_windows():
+        startup_info = subprocess.STARTUPINFO()
+        startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startup_info.wShowWindow = subprocess.SW_HIDE
+        args['startupinfo'] = startup_info
     return args
 
 
@@ -165,24 +214,24 @@ def is_certificate_installed(cert_file:str) -> tuple[bool, str]:
     try:
         serial_number = get_cert_serial_number(cert_file)
         
-        if sys.platform == "win32":
+        if is_windows():
             # Use certutil to look up the certificate by its serial number in the Root store
             cmd = ['certutil', '-store', 'Root', serial_number]
-            store_found_phrase = serial_number
-        elif sys.platform == "darwin":
-            # TODO test on MacOS
-            # Use security to find the certificate by its serial number in the System keychain
-            cmd = ['security', 'find-certificate', '-c', serial_number, '/Library/Keychains/System.keychain']
-            store_found_phrase = 'attributes:'
+            store_found_phrase = serial_number.upper()
+        elif is_macos():
+            # On macOS, list system keychain certs with fingerprints and find matching serial number.
+            cmd = ['security', 'find-certificate', '-Z', '-a', '/Library/Keychains/System.keychain']
+            store_found_phrase = serial_number.upper()
         else:   # unsupported platform
-            return False
+            return False, f"Certificate detection unsupported on platform: {sys.platform}"
         args = sub_run_args()
         result = subprocess.run(cmd, **args)    #pylint:disable=subprocess-run-check
+        text = (result.stdout or "") + (result.stderr or "")
         # Check if the command output indicates the certificate was found
         if result.returncode==0:
-            if store_found_phrase in result.stdout or store_found_phrase.lower() in result.stdout:
-                return True, result.stdout + result.stderr
-        return False, result.stdout + result.stderr
+            if store_found_phrase in text.upper():
+                return True, text
+        return False, text
     except subprocess.SubprocessError as e:
         # error occured while running the command    
         return False, str(e)
@@ -198,7 +247,7 @@ def install_root_cert(cert_file:str):
         (bool, str): True if the certificate is installed successfully, str is the stdout
     """
     # Install cert. If the cert exists, system will skip installation
-    if sys.platform == "win32":
+    if is_windows():
         print(f'"{cert_file}"')
         full_command = ["certutil","-addstore","Root",cert_file]
         # full_command = [
@@ -208,14 +257,17 @@ def install_root_cert(cert_file:str):
         # ]
         p=subprocess.run(full_command, **sub_run_args())
         stdout, stderr = p.stdout, p.stderr        
-    elif sys.platform == "darwin":
-        # TODO Test on MAC system
-        cmd = ['sudo', 'security', 'add-trusted-cert', '-d', '-r', 'trustRoot', '-k', '/Library/Keychains/System.keychain', cert_file]
-        p = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        stdout, stderr = p.stdout, p.stderr
+    elif is_macos():
+        text = (
+            "Automatic certificate install is disabled on macOS.\n"
+            "Please install manually in Terminal:\n"
+            f"sudo security add-trusted-cert -d -r trustRoot -k "
+            f"/Library/Keychains/System.keychain '{cert_file}'"
+        )
+        return False, text
     else:
-        print("Unknown Platform. Please manually install MITM certificate:", cert_file)
-        return False, ""
+        text = f"Please manually install MITM certificate: {cert_file}"
+        return False, text
     
     # Check if successful
     text = f"{stdout}\n{stderr}"
@@ -223,6 +275,22 @@ def install_root_cert(cert_file:str):
         return True, text
     else:   # error        
         return False, text
+
+
+def cert_manual_install_guide(cert_file:str) -> str:
+    """Return user-facing guidance for manual MITM cert install."""
+    if is_windows():
+        return (
+            "Please run as Administrator, or execute:\n"
+            f"certutil -addstore Root \"{cert_file}\""
+        )
+    if is_macos():
+        return (
+            "Install certificate manually in Terminal:\n"
+            f"sudo security add-trusted-cert -d -r trustRoot -k "
+            f"/Library/Keychains/System.keychain '{cert_file}'"
+        )
+    return f"Please install MITM certificate manually: {cert_file}"
 
     
 def list_children(folder:str, full_path:bool=False, incl_file:bool=True, incl_dir:bool=False) -> list[pathlib.Path]:
