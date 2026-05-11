@@ -14,7 +14,15 @@ from game.automation import Automation, UiState, JOIN_GAME, END_GAME
 import mitm
 import proxinject
 import liqi
-from common.mj_helper import MjaiType, GameInfo, MJAI_TILE_2_UNICODE, ActionUnicode, MJAI_TILES_34, MJAI_AKA_DORAS
+from common.mj_helper import (
+    MjaiType,
+    GameInfo,
+    MJAI_TILE_2_UNICODE,
+    ActionUnicode,
+    MJAI_TILES_34,
+    MJAI_AKA_DORAS,
+    cvt_ms2mjai,
+)
 from common.log_helper import LOGGER
 from common.settings import Settings
 from common.lan_str import LanStr
@@ -55,7 +63,9 @@ class BotManager:
         self.mitm_proxinject_need_update:bool = False    # set this True to update mitm and prox inject in main thread
         self.is_loading_bot:bool = False                # is bot being loaded
         self.main_thread_exception:Exception = None     # Exception that had stopped the main thread
-        self.game_exception:Exception = None            # game run time error (but does not break main thread)        
+        self.game_exception:Exception = None            # game run time error (but does not break main thread)
+        self._next_round_emoji_after_big_dealin:bool = False
+        self._self_discard_count:dict[str, int] = {}
         
         
     def start(self):
@@ -384,6 +394,7 @@ class BotManager:
                 if self.game_flow_id is None:
                     LOGGER.info("authGame msg: %s", liqimsg)
                     LOGGER.info("Game Started. Game Flow ID=%s", msg.flow_id)
+                    self._reset_custom_emoji_state()
                     self.game_flow_id = msg.flow_id
                     self.game_state = GameState(self.bot)    # create game state with bot
                     self.game_state.input(liqimsg)      # authGame -> mjai:start_game, no reaction
@@ -406,6 +417,10 @@ class BotManager:
                     self._process_chi_robbed_emoji(liqimsg, pre_pending_reaction)
                 except Exception as e:
                     LOGGER.warning("Failed to process chi-robbed emoji automation: %s", e, exc_info=True)
+                try:
+                    self._process_custom_emoji_rules(liqimsg)
+                except Exception as e:
+                    LOGGER.warning("Failed to process custom emoji automation rules: %s", e, exc_info=True)
                 if reaction:
                     self._do_automation(reaction)
                 else:
@@ -465,10 +480,125 @@ class BotManager:
                 e,
                 exc_info=True,
             )
+
+    def _reset_custom_emoji_state(self):
+        """Reset internal states used by custom emoji triggers."""
+        self._next_round_emoji_after_big_dealin = False
+        self._self_discard_count = {}
+
+    def _normalize_tile_for_count(self, ms_tile:str) -> str | None:
+        """Convert ms tile string to normalized mjai tile key for counting."""
+        if not ms_tile:
+            return None
+        tile = cvt_ms2mjai(ms_tile)
+        if tile in MJAI_AKA_DORAS:
+            tile = tile.replace("r", "")
+        return tile
+
+    def _self_score_delta_from_hule(self, liqimsg:dict) -> int | None:
+        """Extract self seat score delta from ActionHule message."""
+        if not self.game_state:
+            return None
+        liqi_data = liqimsg.get("data", {})
+        action_data = liqi_data.get("data", {})
+        delta_scores = action_data.get("deltaScores")
+        if not isinstance(delta_scores, list):
+            return None
+        seat = self.game_state.seat
+        if not isinstance(seat, int):
+            return None
+        if seat < 0 or seat >= len(delta_scores):
+            return None
+        delta = delta_scores[seat]
+        return int(delta)
+
+    def _process_custom_emoji_rules(self, liqimsg:dict):
+        """Apply always-on custom emoji rules driven by game events."""
+        try:
+            if liqimsg.get("method") != liqi.LiqiMethod.ActionPrototype:
+                return
+            if not self.game_state:
+                return
+
+            liqi_data = liqimsg.get("data", {})
+            action_name = liqi_data.get("name")
+            action_data = liqi_data.get("data", {})
+            step = liqi_data.get("step")
+
+            if action_name == liqi.LiqiAction.NewRound:
+                self._self_discard_count = {}
+                if self._next_round_emoji_after_big_dealin:
+                    sent = self.automation.send_emoji(
+                        8,
+                        reason="next_round_after_big_dealin",
+                        with_cooldown=True,
+                    )
+                    LOGGER.info(
+                        "Custom emoji trigger(new round after big deal-in). sent=%s step=%s flow=%s",
+                        sent,
+                        step,
+                        liqimsg.get("id"),
+                    )
+                    # Consume flag regardless of success to avoid repeated trigger attempts.
+                    self._next_round_emoji_after_big_dealin = False
+                return
+
+            if action_name == liqi.LiqiAction.Hule:
+                delta = self._self_score_delta_from_hule(liqimsg)
+                hules = action_data.get("hules", [])
+                has_ron = isinstance(hules, list) and any(
+                    isinstance(hule, dict) and hule.get("zimo") is False for hule in hules
+                )
+                if has_ron and isinstance(delta, int) and delta < -10000:
+                    self._next_round_emoji_after_big_dealin = True
+                    LOGGER.info(
+                        "Detected big deal-in. next_round_emoji_armed=True step=%s seat=%s delta=%s",
+                        step,
+                        self.game_state.seat,
+                        delta,
+                    )
+                return
+
+            if action_name == liqi.LiqiAction.DiscardTile:
+                seat = action_data.get("seat")
+                if seat != self.game_state.seat:
+                    return
+                tile_ms = action_data.get("tile", "")
+                tile_key = self._normalize_tile_for_count(tile_ms)
+                if not tile_key:
+                    return
+                count = self._self_discard_count.get(tile_key, 0) + 1
+                self._self_discard_count[tile_key] = count
+                if count >= 3:
+                    sent = self.automation.send_emoji(
+                        7,
+                        reason="self_discard_same_tile_3plus",
+                        with_cooldown=True,
+                    )
+                    LOGGER.info(
+                        "Custom emoji trigger(repeat discard). sent=%s step=%s tile=%s count=%s",
+                        sent,
+                        step,
+                        tile_key,
+                        count,
+                    )
+        except Exception as e:
+            LOGGER.warning(
+                "Error on custom emoji rules. msg=%s err=%s",
+                {
+                    "id": liqimsg.get("id"),
+                    "method": liqimsg.get("method"),
+                    "name": liqimsg.get("data", {}).get("name"),
+                    "step": liqimsg.get("data", {}).get("step"),
+                },
+                e,
+                exc_info=True,
+            )
         
     def _process_end_game(self):
         # End game processes
         # self.game_flow_id = None
+        self._reset_custom_emoji_state()
         self.game_state = None
         if self.browser:    # fix for corner case
             self.browser.overlay_clear_guidance()

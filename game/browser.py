@@ -4,6 +4,7 @@ import time
 import threading
 import queue
 import os
+from pathlib import Path
 
 from io import BytesIO
 from playwright._impl._errors import TargetClosedError
@@ -92,39 +93,34 @@ class GameBrowser:
 
         LOGGER.info('Starting Chromium, viewport=%dx%d, proxy=%s', self.width, self.height, proxy)
         with sync_playwright() as playwright:
+            args = ["--noerrdialogs", "--no-sandbox"]
             if enable_chrome_ext:
-                try:
-                    # Initilize browser
-                    chromium = playwright.chromium
-                    self.context = chromium.launch_persistent_context(
-                        user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
-                        headless=False,
-                        viewport={'width': self.width, 'height': self.height},
-                        proxy=proxy_object,
-                        ignore_default_args=["--enable-automation"],
-                        args=[
-                            "--noerrdialogs",
-                            "--no-sandbox",
-                            disable_extensions_except_args,
-                            load_extension_args
-                        ]
-                    )
-                except Exception as e:
-                    LOGGER.error('Error launching the browser: %s', e, exc_info=True)
-                    return
-            else:
-                try:
-                    # Initilize browser
-                    chromium = playwright.chromium
-                    self.context = chromium.launch_persistent_context(
-                        user_data_dir=utils.sub_folder(Folder.BROWSER_DATA),
-                        headless=False,
-                        viewport={'width': self.width, 'height': self.height},
-                        proxy=proxy_object,
-                        ignore_default_args=["--enable-automation"],
-                        args=["--noerrdialogs", "--no-sandbox"]
-                    )
-                except Exception as e:
+                args.extend([disable_extensions_except_args, load_extension_args])
+            launch_kwargs = {
+                "user_data_dir": utils.sub_folder(Folder.BROWSER_DATA),
+                "headless": False,
+                "viewport": {'width': self.width, 'height': self.height},
+                "proxy": proxy_object,
+                "ignore_default_args": ["--enable-automation"],
+                "args": args,
+            }
+            try:
+                chromium = playwright.chromium
+                self.context = chromium.launch_persistent_context(**launch_kwargs)
+            except Exception as e:
+                fallback_executable = self._detect_fallback_chromium_executable()
+                if fallback_executable:
+                    try:
+                        launch_kwargs["executable_path"] = fallback_executable
+                        LOGGER.warning(
+                            "Playwright bundled Chromium unavailable, fallback to %s",
+                            fallback_executable,
+                        )
+                        self.context = chromium.launch_persistent_context(**launch_kwargs)
+                    except Exception as e2:
+                        LOGGER.error('Error launching browser with fallback executable: %s', e2, exc_info=True)
+                        return
+                else:
                     LOGGER.error('Error launching the browser: %s', e, exc_info=True)
                     return
 
@@ -179,6 +175,49 @@ class GameBrowser:
                 LOGGER.error('Error closing browser: %s', e ,exc_info=True)
             self.init_vars()
         return
+
+    def _detect_fallback_chromium_executable(self) -> str | None:
+        """Try finding an installed Playwright Chromium executable outside the app bundle."""
+        try:
+            browser_roots = []
+            env_root = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+            if env_root:
+                browser_roots.append(Path(env_root).expanduser())
+            browser_roots.append(Path.home() / "Library" / "Caches" / "ms-playwright")
+
+            candidates:list[Path] = []
+            for root in browser_roots:
+                if not root.exists():
+                    continue
+                for folder in root.glob("chromium-*"):
+                    possible_bins = [
+                        folder / "chrome-mac" / "Chromium.app" / "Contents" / "MacOS" / "Chromium",
+                        folder / "chrome-mac-arm64" / "Chromium.app" / "Contents" / "MacOS" / "Chromium",
+                        folder / "chrome-mac-arm64" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing",
+                        folder / "chrome-mac" / "Google Chrome for Testing.app" / "Contents" / "MacOS" / "Google Chrome for Testing",
+                    ]
+                    for bin_path in possible_bins:
+                        if bin_path.exists() and bin_path.is_file():
+                            candidates.append(bin_path)
+
+            if not candidates:
+                return None
+
+            def revision(p:Path):
+                try:
+                    for parent in p.parents:
+                        name = parent.name
+                        if name.startswith("chromium-"):
+                            return int(name.split("-")[-1])
+                    return 0
+                except Exception:
+                    return 0
+
+            candidates.sort(key=revision, reverse=True)
+            return str(candidates[0])
+        except Exception as e:
+            LOGGER.warning("Failed detecting fallback Chromium executable: %s", e, exc_info=True)
+            return None
 
     def _clear_action_queue(self):
         """ Clear the action queue"""
