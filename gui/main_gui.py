@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from bot_manager import BotManager, mjai_reaction_2_guide
+from common import utils
 from common.utils import Folder, GameMode, GAME_MODES, GameClientType
 from common.utils import UiState, sub_file, error_to_str
 from common.log_helper import LOGGER, LogHelper
@@ -17,7 +18,7 @@ from updater import Updater, UpdateStatus
 from .utils import GUI_STYLE
 from .settings_window import SettingsWindow
 from .help_window import HelpWindow
-from .widgets import *  # pylint: disable=wildcard-import, unused-wildcard-import
+from .widgets import Card, StatusBar, Timer, ToggleSwitch, ToolBar
 
 
 class MainGUI(tk.Tk):
@@ -33,14 +34,15 @@ class MainGUI(tk.Tk):
         icon = tk.PhotoImage(file=sub_file(Folder.RES,'icon.png'))
         self.iconphoto(True, icon)
         self.protocol("WM_DELETE_WINDOW", self._on_exit)        # confirmation before close window  
-        size = (620,540)      
+        size = (900, 640)
         self.geometry(f"{size[0]}x{size[1]}")
-        self.minsize(*size)
+        self.minsize(760, 560)
         # Styling
         scaling_factor = self.winfo_fpixels('1i') / 96
         GUI_STYLE.set_dpi_scaling(scaling_factor)
         style = ttk.Style(self)
         GUI_STYLE.set_style_normal(style)
+        self.configure(bg=GUI_STYLE.palette["bg"])
         # icon resources:
         self.icon_green = sub_file(Folder.RES,'green.png')
         self.icon_red = sub_file(Folder.RES,'red.png')
@@ -57,121 +59,179 @@ class MainGUI(tk.Tk):
         
 
     def _create_widgets(self):
-        """ Create all widgets in the main window"""
-        # Main window properties
-        self.title(self.st.lan().APP_TITLE)        
-        
-        # container for grid control
-        self.grid_frame = tk.Frame(self)
+        """Create all widgets in the main window."""
+        self.title(self.st.lan().APP_TITLE)
+
+        self.grid_frame = ttk.Frame(self, padding=(18, 16, 18, 14))
         self.grid_frame.pack(fill=tk.BOTH, expand=True)
-        self.grid_frame.grid_columnconfigure(0, weight=1)
-        grid_args = {'column':0, 'sticky': tk.EW, 'padx': 5, 'pady': 2}
-        
-        # === toolbar frame (row 0) ===
-        cur_row = 0
-        tb_ht = 70
-        pack_args = {'side':tk.LEFT, 'padx':4, 'pady':4}
-        self.toolbar = ToolBar(self.grid_frame, tb_ht)
-        self.toolbar.grid(row=cur_row, **grid_args)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=0)
-        
-        # start game button
-        self.toolbar.add_sep()
+        self.grid_frame.columnconfigure(0, weight=1)
+        self.grid_frame.rowconfigure(3, weight=1)
+
+        header = ttk.Frame(self.grid_frame)
+        header.grid(row=0, column=0, sticky=tk.EW)
+        header.columnconfigure(0, weight=1)
+        ttk.Label(
+            header,
+            text=self.st.lan().APP_TITLE,
+            style="Title.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 10))
+
+        self.toolbar = ToolBar(self.grid_frame, 40)
+        self.toolbar.grid(row=1, column=0, sticky="ew", pady=(0, 12))
         self.btn_start_browser = self.toolbar.add_button(
-            self.st.lan().START_BROWSER, 'majsoul.png', self._on_btn_start_browser_clicked)               
-        # buttons on toolbar
+            self.st.lan().START_BROWSER,
+            "majsoul.png",
+            self._on_btn_start_browser_clicked,
+        )
         self.toolbar.add_sep()
-        self.toolbar.add_button(self.st.lan().SETTINGS, 'settings.png', self._on_btn_settings_clicked)
-        self.toolbar.add_button(self.st.lan().OPEN_LOG_FILE, 'log.png', self._on_btn_log_clicked)
-        self.btn_help = self.toolbar.add_button(self.st.lan().HELP, 'help.png', self._on_btn_help_clicked)
-        self.toolbar.add_sep()
-        self.toolbar.add_button(self.st.lan().EXIT, 'exit.png', self._on_exit)
-        
-        # === 2nd toolbar ===
-        cur_row += 1
-        self.tb2 = ToolBar(self.grid_frame, tb_ht)
-        self.tb2.grid(row=cur_row, **grid_args)
-        sw_ft_sz = 10
-        self.tb2.add_sep()
-        # Switches
+        self.toolbar.add_button(self.st.lan().SETTINGS, "settings.png", self._on_btn_settings_clicked)
+        self.toolbar.add_button(self.st.lan().OPEN_LOG_FILE, "log.png", self._on_btn_log_clicked)
+        self.btn_help = self.toolbar.add_button(self.st.lan().HELP, "help.png", self._on_btn_help_clicked)
+        self.toolbar.add_button(self.st.lan().EXIT, "exit.png", self._on_exit)
+
+        controls = Card(self.grid_frame, padding=(16, 14))
+        controls.grid(row=2, column=0, sticky=tk.EW, pady=(0, 12))
+        for col in range(5):
+            controls.columnconfigure(col, weight=1)
+
         self.switch_overlay = ToggleSwitch(
-            self.tb2, self.st.lan().WEB_OVERLAY, tb_ht, font_size=sw_ft_sz, command=self._on_switch_hud_clicked)
-        self.switch_overlay.pack(**pack_args)
-        self.tb2.add_sep()
+            controls,
+            self.st.lan().WEB_OVERLAY,
+            48,
+            font_size=11,
+            command=self._on_switch_hud_clicked,
+        )
+        self.switch_overlay.grid(row=0, column=0, sticky="w", padx=(0, 16), pady=(0, 10))
         self.switch_autoplay = ToggleSwitch(
-            self.tb2, self.st.lan().AUTOPLAY, tb_ht, font_size=sw_ft_sz, command=self._on_switch_autoplay_clicked)
-        self.switch_autoplay.pack(**pack_args)
-        # auto join
-        self.tb2.add_sep()
+            controls,
+            self.st.lan().AUTOPLAY,
+            48,
+            font_size=11,
+            command=self._on_switch_autoplay_clicked,
+        )
+        self.switch_autoplay.grid(row=0, column=1, sticky="w", padx=(0, 16), pady=(0, 10))
         self.switch_autojoin = ToggleSwitch(
-            self.tb2, self.st.lan().AUTO_JOIN_GAME, tb_ht, font_size=sw_ft_sz, command=self._on_switch_autojoin_clicked)
-        self.switch_autojoin.pack(**pack_args)
-        # combo boxrd for auto join level and mode
-        _frame = tk.Frame(self.tb2)
-        _frame.pack(**pack_args)
+            controls,
+            self.st.lan().AUTO_JOIN_GAME,
+            48,
+            font_size=11,
+            command=self._on_switch_autojoin_clicked,
+        )
+        self.switch_autojoin.grid(row=0, column=2, sticky="w", padx=(0, 16), pady=(0, 10))
+
+        autojoin_frame = ttk.Frame(controls, style="Surface.TFrame")
+        autojoin_frame.grid(row=0, column=3, sticky="ew", padx=(0, 16), pady=(0, 10))
+        autojoin_frame.columnconfigure(0, weight=1)
         self.auto_join_level_var = tk.StringVar(value=self.st.lan().GAME_LEVELS[self.st.auto_join_level])
         options = self.st.lan().GAME_LEVELS
-        combo_autojoin_level = ttk.Combobox(_frame, textvariable=self.auto_join_level_var, values=options, state="readonly", width=8)
-        combo_autojoin_level.grid(row=0, column=0, padx=3, pady=3)   
-        combo_autojoin_level.bind("<<ComboboxSelected>>", self._on_autojoin_level_selected)        
+        combo_autojoin_level = ttk.Combobox(
+            autojoin_frame,
+            textvariable=self.auto_join_level_var,
+            values=options,
+            state="readonly",
+            style="Form.TCombobox",
+            width=10,
+        )
+        combo_autojoin_level.grid(row=0, column=0, sticky=tk.EW, pady=(0, 6))
+        combo_autojoin_level.bind("<<ComboboxSelected>>", self._on_autojoin_level_selected)
         mode_idx = GAME_MODES.index(self.st.auto_join_mode)
         self.auto_join_mode_var = tk.StringVar(value=self.st.lan().GAME_MODES[mode_idx])
         options = self.st.lan().GAME_MODES
-        combo_autojoin_mode = ttk.Combobox(_frame, textvariable=self.auto_join_mode_var, values=options, state="readonly", width=8)
-        combo_autojoin_mode.grid(row=1, column=0, padx=3, pady=3)
+        combo_autojoin_mode = ttk.Combobox(
+            autojoin_frame,
+            textvariable=self.auto_join_mode_var,
+            values=options,
+            state="readonly",
+            style="Form.TCombobox",
+            width=10,
+        )
+        combo_autojoin_mode.grid(row=1, column=0, sticky=tk.EW)
         combo_autojoin_mode.bind("<<ComboboxSelected>>", self._on_autojoin_mode_selected)
-        # timer
-        self.timer = Timer(self.tb2, tb_ht, sw_ft_sz, self.st.lan().AUTO_JOIN_TIMER)
-        self.timer.set_callback(self.bot_manager.disable_autojoin)        # stop autojoin when time is up
-        self.timer.pack(**pack_args)
-        self.tb2.add_sep()        
-               
-        # === AI guidance ===
-        cur_row += 1
-        _label = ttk.Label(self.grid_frame, text=self.st.lan().AI_OUTPUT)
-        _label.grid(row=cur_row, **grid_args)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=0)
-        
-        cur_row += 1
-        self.ai_guide_var = tk.StringVar()
-        self.text_ai_guide = tk.Label(
-            self.grid_frame,
-            textvariable=self.ai_guide_var,
-            font=GUI_STYLE.font_normal("Segoe UI Emoji",22),
-            height=5, anchor=tk.NW, justify=tk.LEFT,
-            relief=tk.SUNKEN, padx=5,pady=5,
-            )
-        self.text_ai_guide.grid(row=cur_row, **grid_args)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=1)        
 
-        # === game info ===
-        cur_row += 1
-        _label = ttk.Label(self.grid_frame, text=self.st.lan().GAME_INFO)
-        _label.grid(row=cur_row, **grid_args)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=0)
-        cur_row += 1
+        timer_frame = ttk.Frame(controls, style="Surface.TFrame")
+        timer_frame.grid(row=0, column=4, sticky="e", pady=(0, 10))
+        ttk.Label(
+            timer_frame,
+            text=self.st.lan().AUTO_JOIN_TIMER,
+            style="Muted.TLabel",
+        ).grid(row=0, column=0, sticky="w", pady=(0, 4))
+        self.timer = Timer(timer_frame, 44, 10, self.st.lan().AUTO_JOIN_TIMER)
+        self.timer.set_callback(self.bot_manager.disable_autojoin)
+        self.timer.grid(row=1, column=0, sticky="w")
+
+        content = ttk.Frame(self.grid_frame)
+        content.grid(row=3, column=0, sticky=tk.NSEW)
+        content.columnconfigure(0, weight=3, uniform="main")
+        content.columnconfigure(1, weight=2, uniform="main")
+        content.rowconfigure(0, weight=1)
+
+        ai_card = Card(content, padding=(16, 14))
+        ai_card.grid(row=0, column=0, sticky=tk.NSEW, padx=(0, 12))
+        ai_card.columnconfigure(0, weight=1)
+        ai_card.rowconfigure(1, weight=1)
+        ttk.Label(ai_card, text=self.st.lan().AI_OUTPUT, style="Section.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 10)
+        )
+        self.ai_guide_var = tk.StringVar()
+        self.ai_guide_var.trace_add("write", self._sync_ai_guide_text)
+        self.text_ai_guide = tk.Text(
+            ai_card,
+            wrap=tk.WORD,
+            height=8,
+            borderwidth=0,
+            highlightthickness=0,
+            bg=GUI_STYLE.palette["surface_alt"],
+            fg=GUI_STYLE.palette["text"],
+            insertwidth=0,
+            padx=12,
+            pady=12,
+            font=GUI_STYLE.font_emoji(18),
+        )
+        self.text_ai_guide.grid(row=1, column=0, sticky=tk.NSEW)
+        self.text_ai_guide.configure(state=tk.DISABLED)
+
+        game_card = Card(content, padding=(16, 14))
+        game_card.grid(row=0, column=1, sticky=tk.NSEW)
+        game_card.columnconfigure(0, weight=1)
+        game_card.rowconfigure(1, weight=1)
+        ttk.Label(game_card, text=self.st.lan().GAME_INFO, style="Section.TLabel").grid(
+            row=0, column=0, sticky="w", pady=(0, 10)
+        )
         self.gameinfo_var = tk.StringVar()
         self.text_gameinfo = tk.Label(
-            self.grid_frame,
+            game_card,
             textvariable=self.gameinfo_var,
-            height=2, anchor=tk.W, justify=tk.LEFT,
-            font=GUI_STYLE.font_normal("Segoe UI Emoji",22),
-            relief=tk.SUNKEN, padx=5,pady=5,
-            )
-        self.text_gameinfo.grid(row=cur_row, **grid_args)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=1)
-        
-        # === Model info ===
-        cur_row += 1
+            anchor=tk.NW,
+            justify=tk.LEFT,
+            font=GUI_STYLE.font_emoji(22),
+            bg=GUI_STYLE.palette["surface_alt"],
+            fg=GUI_STYLE.palette["text"],
+            padx=12,
+            pady=12,
+            wraplength=360,
+        )
+        self.text_gameinfo.grid(row=1, column=0, sticky=tk.NSEW)
+        self.text_gameinfo.bind(
+            "<Configure>",
+            lambda event: self.text_gameinfo.configure(wraplength=max(120, event.width - 24)),
+        )
+
         self.model_bar = StatusBar(self.grid_frame, 2)
-        self.model_bar.grid(row=cur_row, column=0, sticky='ew', padx=1, pady=1)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=0)
-        
-        # === status bar ===
-        cur_row += 1
+        self.model_bar.grid(row=4, column=0, sticky=tk.EW, pady=(12, 0))
+
         self.status_bar = StatusBar(self.grid_frame, 3)
-        self.status_bar.grid(row=cur_row, column=0, sticky='ew', padx=1, pady=1)
-        self.grid_frame.grid_rowconfigure(cur_row, weight=0)
+        self.status_bar.grid(row=5, column=0, sticky=tk.EW, pady=(8, 0))
+
+    def _sync_ai_guide_text(self, *_args):
+        """Keep the guidance text panel in sync with the StringVar."""
+        if not hasattr(self, "text_ai_guide"):
+            return
+        self.text_ai_guide.configure(state=tk.NORMAL)
+        self.text_ai_guide.delete("1.0", tk.END)
+        text = self.ai_guide_var.get()
+        if text:
+            self.text_ai_guide.insert("1.0", text)
+        self.text_ai_guide.configure(state=tk.DISABLED)
     
     def report_callback_exception(self, exc, val, tb):
         """ override exception handling: write to log"""

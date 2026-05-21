@@ -10,6 +10,7 @@ from common.settings import Settings
 from common import utils
 from updater import Updater, UpdateStatus
 from .utils import GUI_STYLE
+from .widgets import Card
 
 
 class HelpWindow(tk.Toplevel):
@@ -24,34 +25,51 @@ class HelpWindow(tk.Toplevel):
         parent_x = parent.winfo_x()
         parent_y = parent.winfo_y()
         self.geometry(f'+{parent_x+10}+{parent_y+10}')
-        self.win_size = (750, 700)
+        self.win_size = (820, 720)
         self.geometry(f"{self.win_size[0]}x{self.win_size[1]}")  # Set the window size
-        # self.resizable(False, False)
+        self.minsize(680, 520)
+        self.configure(bg=GUI_STYLE.palette["bg"])
+
+        style = ttk.Style(self)
+        GUI_STYLE.set_style_normal(style)
+
+        root = ttk.Frame(self, padding=(18, 16, 18, 14))
+        root.pack(fill=tk.BOTH, expand=True)
+        root.columnconfigure(0, weight=1)
+        root.rowconfigure(0, weight=1)
 
         self.html_text:str = None
+        content_card = Card(root, padding=(12, 12))
+        content_card.grid(row=0, column=0, sticky=tk.NSEW)
+        content_card.columnconfigure(0, weight=1)
+        content_card.rowconfigure(0, weight=1)
         self.html_box = HTMLScrolledText(
-            self, html=st.lan().HELP+st.lan().LOADING,
+            content_card, html=st.lan().HELP+st.lan().LOADING,
             wrap=tk.CHAR, font=GUI_STYLE.font_normal(), height=25,
             state=tk.DISABLED)
-        self.html_box.pack(padx=10, pady=10, side=tk.TOP, fill=tk.BOTH, expand=True)        
+        self.html_box.grid(row=0, column=0, sticky=tk.NSEW)
 
-        self.frame_bot = tk.Frame(self, height=30)
-        self.frame_bot.pack(expand=True, fill=tk.X, padx=10, pady=10)
-        col_widths = [int(w*self.win_size[0]) for w in (0.1, 0.4, 0.1)]
-        for idx, width in enumerate(col_widths):
-            self.frame_bot.grid_columnconfigure(idx, minsize=width, weight=1)
+        self.frame_bot = ttk.Frame(root)
+        self.frame_bot.grid(row=1, column=0, sticky=tk.EW, pady=(14, 0))
+        self.frame_bot.grid_columnconfigure(1, weight=1)
         
         # Updater button
-        self.update_button = ttk.Button(self.frame_bot, text=st.lan().CHECK_FOR_UPDATE, state=tk.DISABLED, width=16)
-        self.update_button.grid(row=0, column=0, sticky=tk.NSEW, padx=10, pady=10)
+        self.update_button = ttk.Button(
+            self.frame_bot,
+            text=st.lan().CHECK_FOR_UPDATE,
+            state=tk.DISABLED,
+            width=18,
+            style="Accent.TButton",
+        )
+        self.update_button.grid(row=0, column=0, sticky=tk.W, padx=(0, 12))
         # label
         self.update_str_var = tk.StringVar(value="")
-        self.update_label = ttk.Label(self.frame_bot, textvariable=self.update_str_var)
-        self.update_label.grid(row=0, column=1, sticky=tk.NSEW, padx=10, pady=10)
+        self.update_label = ttk.Label(self.frame_bot, textvariable=self.update_str_var, style="TLabel")
+        self.update_label.grid(row=0, column=1, sticky=tk.EW, padx=(0, 12))
         self.update_cmd:Callable = lambda: None
         # OK Button
         self.ok_button = ttk.Button(self.frame_bot, text="OK", command=self._on_close, width=8)
-        self.ok_button.grid(row=0, column=2, sticky=tk.NSEW, padx=10, pady=10)
+        self.ok_button.grid(row=0, column=2, sticky=tk.E)
         
         self.after_idle(self._refresh_ui)
               

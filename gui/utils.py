@@ -1,4 +1,5 @@
-""" GUI common/utility functions"""
+"""GUI common/utility functions."""
+import sys
 import tkinter as tk
 from tkinter import ttk, font
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -8,56 +9,218 @@ from common.log_helper import LOGGER
 
 
 class GuiStyle:
-    """ GUI Style Class"""
+    """Shared visual language for the tkinter UI."""
+
+    COLORS = {
+        "bg": "#f5f5f7",
+        "surface": "#ffffff",
+        "surface_alt": "#fbfbfd",
+        "stroke": "#d2d2d7",
+        "stroke_subtle": "#e5e5ea",
+        "text": "#1d1d1f",
+        "muted": "#6e6e73",
+        "accent": "#007aff",
+        "accent_hover": "#0a84ff",
+        "accent_soft": "#e8f2ff",
+        "green": "#34c759",
+        "yellow": "#ffcc00",
+        "red": "#ff3b30",
+        "gray": "#8e8e93",
+        "ready": "#5ac8fa",
+    }
+
     def __init__(self, std_font_size:int=12):
         self.std_font_size = std_font_size
         self.font_size = std_font_size
         self.dpi_scale:float = 1.0
+        self._font_family = "Microsoft YaHei"
+        self._mono_family = "Consolas"
+        self._emoji_family = "Segoe UI Emoji"
         
 
     def set_style_normal(self, style:ttk.Style):
-        """ Set style for ttk widgets"""
-        style.configure("TLabel", font=("Microsoft YaHei", self.font_size))
+        """Set the ttk theme and shared widget styles."""
+        try:
+            if "clam" in style.theme_names():
+                style.theme_use("clam")
+        except Exception:
+            pass
+
+        self._configure_fonts()
+        base_font = self.font_normal()
+        small_font = self.font_normal(size=10)
+        title_font = self.font_normal(size=16, weight="bold")
+
+        style.configure(".", font=base_font)
+        style.configure("TFrame", background=self.COLORS["bg"])
+        style.configure("Surface.TFrame", background=self.COLORS["surface"])
+        style.configure("TLabel", background=self.COLORS["bg"], foreground=self.COLORS["text"], font=base_font)
+        style.configure("Surface.TLabel", background=self.COLORS["surface"], foreground=self.COLORS["text"], font=base_font)
+        style.configure("Muted.TLabel", background=self.COLORS["surface"], foreground=self.COLORS["muted"], font=small_font)
+        style.configure("Title.TLabel", background=self.COLORS["bg"], foreground=self.COLORS["text"], font=title_font)
+        style.configure("Section.TLabel", background=self.COLORS["surface"], foreground=self.COLORS["text"],
+                        font=self.font_normal(size=13, weight="bold"))
         style.configure(
             "TButton",
-            background="#4CAF50", foreground="black",
-            font=("Microsoft YaHei", self.font_size),
-            relief="raised",
-            borderwidth=2,
-            )
+            background=self.COLORS["surface_alt"],
+            foreground=self.COLORS["text"],
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=self.COLORS["accent"],
+            padding=(12, 8),
+            relief="flat",
+        )
+        style.map(
+            "TButton",
+            background=[("active", self.COLORS["stroke_subtle"]), ("disabled", self.COLORS["surface_alt"])],
+            foreground=[("disabled", self.COLORS["gray"])],
+        )
+        style.configure(
+            "Toolbar.TButton",
+            background=self.COLORS["bg"],
+            foreground=self.COLORS["text"],
+            borderwidth=0,
+            padding=(10, 6),
+            relief="flat",
+        )
+        style.map(
+            "Toolbar.TButton",
+            background=[("active", self.COLORS["stroke_subtle"]), ("disabled", self.COLORS["bg"])],
+            foreground=[("disabled", self.COLORS["gray"])],
+        )
+        style.configure(
+            "Accent.TButton",
+            background=self.COLORS["accent"],
+            foreground="#ffffff",
+            borderwidth=0,
+            padding=(14, 9),
+            relief="flat",
+        )
+        style.map(
+            "Accent.TButton",
+            background=[("active", self.COLORS["accent_hover"]), ("disabled", self.COLORS["stroke"])],
+            foreground=[("disabled", self.COLORS["muted"])],
+        )
+        style.configure(
+            "Sidebar.TButton",
+            anchor="w",
+            background=self.COLORS["bg"],
+            foreground=self.COLORS["text"],
+            borderwidth=0,
+            padding=(12, 10),
+            relief="flat",
+        )
+        style.map("Sidebar.TButton", background=[("active", self.COLORS["stroke_subtle"])])
+        style.configure(
+            "SidebarSelected.TButton",
+            anchor="w",
+            background=self.COLORS["accent_soft"],
+            foreground=self.COLORS["accent"],
+            borderwidth=0,
+            padding=(12, 10),
+            relief="flat",
+        )
+        style.map("SidebarSelected.TButton", background=[("active", self.COLORS["accent_soft"])])
+        style.configure(
+            "TEntry",
+            fieldbackground="#ffffff",
+            foreground=self.COLORS["text"],
+            bordercolor=self.COLORS["stroke"],
+            lightcolor=self.COLORS["stroke"],
+            darkcolor=self.COLORS["stroke"],
+            padding=(8, 7),
+        )
+        style.configure(
+            "TCombobox",
+            fieldbackground="#ffffff",
+            foreground=self.COLORS["text"],
+            bordercolor=self.COLORS["stroke"],
+            lightcolor=self.COLORS["stroke"],
+            darkcolor=self.COLORS["stroke"],
+            padding=(8, 6),
+            arrowsize=14,
+        )
+        style.configure(
+            "Form.TEntry",
+            fieldbackground=self.COLORS["surface_alt"],
+            foreground=self.COLORS["text"],
+            bordercolor=self.COLORS["stroke_subtle"],
+            lightcolor=self.COLORS["stroke_subtle"],
+            darkcolor=self.COLORS["stroke_subtle"],
+            padding=(9, 8),
+        )
+        style.configure(
+            "Form.TCombobox",
+            fieldbackground=self.COLORS["surface_alt"],
+            foreground=self.COLORS["text"],
+            bordercolor=self.COLORS["stroke_subtle"],
+            lightcolor=self.COLORS["stroke_subtle"],
+            darkcolor=self.COLORS["stroke_subtle"],
+            padding=(9, 7),
+            arrowsize=14,
+        )
+        style.configure("TCheckbutton", background=self.COLORS["surface"], foreground=self.COLORS["text"],
+                        padding=(0, 4), font=base_font)
+        style.configure("Horizontal.TScrollbar", troughcolor=self.COLORS["bg"], background=self.COLORS["stroke"])
+        style.configure("Vertical.TScrollbar", troughcolor=self.COLORS["bg"], background=self.COLORS["stroke"])
         
-    
-    def font_normal(self, family:str=None, size:int=None):
-        """ return normal font for gui/widgets"""
+    def _configure_fonts(self):
+        if sys.platform == "darwin":
+            self._font_family = "SF Pro Text"
+            self._mono_family = "Menlo"
+            self._emoji_family = "Apple Color Emoji"
+        elif sys.platform == "win32":
+            self._font_family = "Segoe UI"
+            self._mono_family = "Consolas"
+            self._emoji_family = "Segoe UI Emoji"
+        else:
+            self._font_family = "Noto Sans"
+            self._mono_family = "DejaVu Sans Mono"
+            self._emoji_family = "Noto Color Emoji"
+
+        try:
+            for named_font in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+                font.nametofont(named_font).configure(family=self._font_family, size=self.font_size)
+        except Exception:
+            pass
+
+    def font_normal(self, family:str=None, size:int=None, weight:str="normal"):
+        """Return a tuple usable as a tkinter font."""
         if not family:
-            family = "Microsoft YaHei"
+            family = self._font_family
         if not size:
             size = self.font_size
         else:
-            size = int(size / self.dpi_scale)        
-        return (family, size)
+            size = max(8, int(size / self.dpi_scale))
+        return (family, size, weight)
+
+    def font_mono(self, size:int=None, weight:str="normal"):
+        """Return a monospaced font tuple."""
+        return self.font_normal(self._mono_family, size, weight)
+
+    def font_emoji(self, size:int=None, weight:str="normal"):
+        """Return a platform-preferred emoji/symbol font tuple."""
+        return self.font_normal(self._emoji_family, size, weight)
     
 
     def set_dpi_scaling(self, scale:float=1.0):
-        """ set dpi scaling, change font size accordingly"""
-        self.dpi_scale = scale
-        self.font_size = int(self.std_font_size / scale)
+        """Set DPI scaling while keeping readable minimum sizes."""
+        self.dpi_scale = max(0.75, min(2.5, scale))
+        self.font_size = max(10, int(self.std_font_size / self.dpi_scale))
+
+    @property
+    def palette(self):
+        """Color palette accessor."""
+        return self.COLORS
 
 
 def add_hover_text(widget:tk.Widget, text:str):
-    """ Add a hover string label when mouse is over the widget"""
-    hover_text = str(text).strip() if text is not None else ""
-    if not hover_text:
-        try:
-            hover_text = str(widget.cget("text")).strip()
-        except Exception:
-            hover_text = ""
+    """Compatibility shim for old tooltip calls.
 
-    if not hover_text:
-        return
-
-    widget.bind("<Enter>", lambda event: _on_hover(widget, hover_text))
-    widget.bind("<Leave>", lambda event: _on_leave_hover(widget))
+    The redesigned desktop UI uses visible labels instead of custom tooltip
+    popups, which looked out of place on macOS and Windows alike.
+    """
+    return
     
     
 def _on_hover(wdg:tk.Widget, text:str):
@@ -68,7 +231,7 @@ def _on_hover(wdg:tk.Widget, text:str):
         toplvl = wdg.winfo_toplevel()
         try:
             wdg.original_bg = wdg.cget("background")
-            wdg.configure(background="light blue")
+            wdg.configure(background=GUI_STYLE.palette["accent_soft"])
         except Exception:
             wdg.original_bg = None
 
@@ -80,10 +243,13 @@ def _on_hover(wdg:tk.Widget, text:str):
         wdg.hover_text = tk.Label(
             toplvl,
             text=text,
-            bg="lightyellow",
-            fg="black",
-            highlightbackground="black",
+            bg=GUI_STYLE.palette["surface_alt"],
+            fg=GUI_STYLE.palette["text"],
+            highlightbackground=GUI_STYLE.palette["stroke"],
             highlightthickness=1,
+            padx=8,
+            pady=4,
+            font=GUI_STYLE.font_normal(size=10),
         )
         x = wdg.winfo_rootx() - toplvl.winfo_rootx() + wdg.winfo_width()
         y = wdg.winfo_rooty() - toplvl.winfo_rooty() + wdg.winfo_height() //2

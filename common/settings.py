@@ -61,6 +61,7 @@ class Settings:
         self.auto_emoji_intervel:float = self._get_value("auto_emoji_intervel", 5.0, lambda x: 1.0 < x < 30.0)
         self.auto_emoji_before_hu:bool = self._get_value("auto_emoji_before_hu", False, self.valid_bool)
         self.auto_emoji_on_chi_robbed:bool = self._get_value("auto_emoji_on_chi_robbed", False, self.valid_bool)
+        self.auto_profile_peek:bool = self._get_value("auto_profile_peek", False, self.valid_bool)
         self.auto_dahai_drag:bool = self._get_value("auto_dahai_drag", True, self.valid_bool)
         self.ai_randomize_choice:int = self._get_value("ai_randomize_choice", 1, lambda x: 0 <= x <= 5)
         self.ai_randomize_top_n:int = self._get_value("ai_randomize_top_n", 3, lambda x: 3 <= x <= 6)

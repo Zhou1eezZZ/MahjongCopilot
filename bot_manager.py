@@ -217,12 +217,14 @@ class BotManager:
         """ enable autojoin"""
         LOGGER.debug("Enabling Auto Join")
         self.st.auto_join_game = True
+        self.automation.clear_auto_join_delay()
         
         
     def disable_autojoin(self):
         """ disable autojoin"""
         LOGGER.debug("Disabling Auto Join")
         self.st.auto_join_game = False
+        self.automation.clear_auto_join_delay()
         # stop any lobby tasks
         if self.automation.is_running_execution():
             name, _d = self.automation.running_task_info()
@@ -339,9 +341,9 @@ class BotManager:
                     LOGGER.debug("Bot manager turning off browser overlay")
                     self.browser.stop_overlay()
         
-        self.automation.automate_retry_pending(self.game_state)            # retry failed automation
-        
         if not self.game_exception:     # skip on game error
+            self.automation.automate_retry_pending(self.game_state)            # retry failed automation
+            self.automation.automate_profile_peek(self.game_state)
             self.automation.decide_lobby_action()
             
         

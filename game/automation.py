@@ -16,7 +16,7 @@ from common.mj_helper import MjaiType, MSType, MJAI_TILES_19, MJAI_TILES_28, MJA
 from common.mj_helper import sort_mjai_tiles, cvt_ms2mjai
 from common.log_helper import LOGGER
 from common.settings import Settings
-from common.utils import UiState, GAME_MODES
+from common.utils import UiState, GAME_MODES, GameMode
 
 from .img_proc import ImgTemp, GameVisual
 from .browser import GameBrowser
@@ -110,6 +110,13 @@ class Positions:
         (11.6, 6.1),   # 3E 三人东
         (11.6, 7.35),  # 3S 三人南
     ]
+
+    PROFILE_AVATARS_4P = [
+        (0.96, 2.72),    # left opponent
+        (11.78, 0.72),   # top opponent
+        (14.72, 2.64),   # right opponent
+    ]
+    PROFILE_CLOSE = (15.05, 0.45)
 
 
 
@@ -276,6 +283,7 @@ class AutomationTask:
 
 END_GAME = "Auto_EndGame"
 JOIN_GAME = "Auto_JoinGame"
+PROFILE_PEEK = "Auto_ProfilePeek"
 
 class Automation:
     """ Convert mjai reaction messages to browser actions, automating the AI actions on Majsoul.
@@ -292,6 +300,9 @@ class Automation:
         self.ui_state:UiState = UiState.NOT_RUNNING   # Where game UI is at. initially not running 
         
         self.last_emoji_time:float = 0.0        # timestamp of last emoji sent   
+        self.next_auto_join_time:float = 0.0    # next time auto join can start after a finished game
+        self._last_auto_join_wait_log:float = 0.0
+        self.next_profile_peek_time:float = 0.0
     
     def is_running_execution(self):
         """ if task is still running"""
@@ -313,6 +324,11 @@ class Automation:
             LOGGER.info("Stopping previous action: %s", self._task.name)
             self._task.stop()
             self._task = None
+
+    def clear_auto_join_delay(self):
+        """Clear post-game auto-join cooldown, typically after a manual toggle."""
+        self.next_auto_join_time = 0.0
+        self._last_auto_join_wait_log = 0.0
             
     def can_automate(self, cancel_on_running:bool=False, limit_state:UiState=None) -> bool:
         """return True if automation conditions met """
@@ -381,7 +397,13 @@ class Automation:
             return False
         if game_state is None or mjai_action is None:
             return False          
-        
+
+        if self.is_running_execution():
+            name, _desc = self.running_task_info() or ("", "")
+            if name == PROFILE_PEEK:
+                LOGGER.debug("Delay action automation while profile peek task closes cleanly.")
+                return False
+
         self.stop_previous()
         gi = game_state.get_game_info()
         assert gi is not None, "Game info is None"
@@ -431,6 +453,13 @@ class Automation:
         self._task = AutomationTask(self.executor, f"Auto_{mjai_type}_{pai}", desc)
         self._task.start_action_steps(action_steps, game_state)
         return True
+
+    def _schedule_next_profile_peek(self):
+        """Schedule the next optional in-game profile peek."""
+        if self.st.auto_profile_peek:
+            self.next_profile_peek_time = time.time() + random.uniform(10 * 60, 15 * 60)
+        else:
+            self.next_profile_peek_time = 0.0
     
     def randomize_action(self, action:dict, gi:GameInfo) -> dict:
         """Randomize AI dahai choice using top-N candidates and optional near-tie bias."""
@@ -574,13 +603,9 @@ class Automation:
         steps:list[ActionStep] = []
         if delay > 0:
             steps.append(ActionStepDelay(delay))
-        steps.append(ActionStepMove(x * self.scaler, y * self.scaler))
-        steps.append(ActionStepDelay(random.uniform(0.08, 0.18)))
-        steps.append(ActionStepClick(random.randint(60, 100)))
+        steps.extend(self.steps_randomized_move_click(x, y))
         x, y = Positions.EMOJIS[idx]
-        steps.append(ActionStepMove(x * self.scaler, y * self.scaler))
-        steps.append(ActionStepDelay(random.uniform(0.08, 0.18)))
-        steps.append(ActionStepClick(random.randint(60, 100)))
+        steps.extend(self.steps_randomized_move_click(x, y))
         return steps
 
     def send_emoji(self, index:int, reason:str="", with_cooldown:bool=True) -> bool:
@@ -602,6 +627,40 @@ class Automation:
             return True
         except Exception as e:
             LOGGER.warning("Failed to send emoji index=%s, reason=%s: %s", index, reason, e, exc_info=True)
+            return False
+
+    def automate_profile_peek(self, game_state:GameState):
+        """Occasionally open a random opponent profile during an in-progress 4P game."""
+        try:
+            if not self.st.auto_profile_peek:
+                self.next_profile_peek_time = 0.0
+                return False
+            if self.next_profile_peek_time <= 0:
+                self._schedule_next_profile_peek()
+                return False
+            if time.time() < self.next_profile_peek_time:
+                return False
+            if game_state is None or game_state.game_mode != GameMode.MJ4P:
+                self._schedule_next_profile_peek()
+                return False
+            if game_state.get_pending_reaction() is not None:
+                return False
+            if not self.can_automate(True, UiState.IN_GAME):
+                return False
+
+            avatar_x, avatar_y = random.choice(Positions.PROFILE_AVATARS_4P)
+            close_x, close_y = Positions.PROFILE_CLOSE
+            steps = self.steps_randomized_move_click(avatar_x, avatar_y, radius_x=0.06, radius_y=0.06)
+            steps.append(ActionStepDelay(random.uniform(3, 5)))
+            steps.extend(self.steps_randomized_move_click(close_x, close_y, radius_x=0.03, radius_y=0.03))
+            self._task = AutomationTask(self.executor, PROFILE_PEEK, "Randomly view player profile")
+            self._task.start_action_steps(steps, None)
+            self._schedule_next_profile_peek()
+            LOGGER.info("Started profile peek automation. next_profile_peek_time=%.0f", self.next_profile_peek_time)
+            return True
+        except Exception as e:
+            LOGGER.warning("Failed to automate profile peek: %s", e, exc_info=True)
+            self._schedule_next_profile_peek()
             return False
     
     def automate_idle_mouse_move(self, prob:float):
@@ -763,7 +822,20 @@ class Automation:
         """ scaler for 16x9 -> game resolution"""
         return self.executor.width/16
     
-    def steps_randomized_move(self, x:float, y:float) -> list[ActionStep]:
+    def _offset_target(self, x:float, y:float, radius_x:float=0.08, radius_y:float=0.05) -> tuple[float, float]:
+        """Return a small randomized target offset in 16:9 coordinate space."""
+        ox = x + random.uniform(-radius_x, radius_x)
+        oy = y + random.uniform(-radius_y, radius_y)
+        return max(0, min(16, ox)), max(0, min(9, oy))
+
+    def steps_randomized_move(
+        self,
+        x:float,
+        y:float,
+        radius_x:float=0.08,
+        radius_y:float=0.05,
+        randomize_target:bool=True,
+    ) -> list[ActionStep]:
         """ generate list of steps for a randomized mouse move
         Params:
             x, y: target position in 16x9 resolution
@@ -778,16 +850,24 @@ class Automation:
                 steps.append(ActionStepMove(rx*self.scaler, ry*self.scaler, random.randint(2, 5)))
                 steps.append(ActionStepDelay(random.uniform(0.05, 0.11)))
         # then move to target
+        if randomize_target:
+            x, y = self._offset_target(x, y, radius_x, radius_y)
         tx, ty = x*self.scaler, y*self.scaler
         steps.append(ActionStepMove(tx, ty, random.randint(2, 5)))
         return steps
     
-    def steps_randomized_move_click(self, x:float, y:float) -> list[ActionStep]:
+    def steps_randomized_move_click(
+        self,
+        x:float,
+        y:float,
+        radius_x:float=0.08,
+        radius_y:float=0.05,
+    ) -> list[ActionStep]:
         """ generate list of steps for a randomized mouse move and click
         Params:
             x, y: target position in 16x9 resolution
             random_moves(int): number of random moves before target. None -> use settings"""
-        steps = self.steps_randomized_move(x, y)
+        steps = self.steps_randomized_move(x, y, radius_x, radius_y, True)
         steps.append(ActionStepDelay(random.uniform(0.3, 0.5)))
         steps.append(ActionStepClick(random.randint(60, 100)))
         return steps
@@ -847,12 +927,19 @@ class Automation:
         """ enter game handler"""
         self.stop_previous()
         self.ui_state = UiState.IN_GAME
+        self.next_auto_join_time = 0.0
+        self._schedule_next_profile_peek()
 
     def on_end_game(self):
         """ end game handler"""
         self.stop_previous()
         if self.ui_state != UiState.NOT_RUNNING:
             self.ui_state = UiState.GAME_ENDING
+        self.next_profile_peek_time = 0.0
+        if self.st.auto_join_game:
+            delay = random.uniform(60, 300)
+            self.next_auto_join_time = time.time() + delay
+            LOGGER.info("Post-game auto join delayed for %.1f seconds.", delay)
         # if auto next. go to lobby, then next
         
     def on_exit_lobby(self):
@@ -936,6 +1023,11 @@ class Automation:
         x,y = Positions.MODES[mode_idx]
         for step in self.steps_randomized_move_click(x,y):
             yield step    
+
+    def _auto_join_wait_remaining(self) -> float:
+        if self.next_auto_join_time <= 0:
+            return 0.0
+        return max(0.0, self.next_auto_join_time - time.time())
     
     def decide_lobby_action(self):
         """ decide what "lobby action" to execute based on current state."""
@@ -948,6 +1040,13 @@ class Automation:
         if self.ui_state == UiState.NOT_RUNNING:
             pass
         elif self.ui_state == UiState.MAIN_MENU:
+            remaining = self._auto_join_wait_remaining()
+            if remaining > 0:
+                now = time.time()
+                if now - self._last_auto_join_wait_log > 30:
+                    LOGGER.info("Waiting %.1f seconds before next auto join.", remaining)
+                    self._last_auto_join_wait_log = now
+                return False
             self.automate_join_game()
         elif self.ui_state == UiState.IN_GAME:
             pass
