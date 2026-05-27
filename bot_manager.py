@@ -135,8 +135,17 @@ class BotManager:
     def start_browser(self):
         """ Start the browser thread, open browser window """
         ms_url = self.st.ms_url
-        proxy = self.mitm_server.proxy_str
-        self.browser.start(ms_url, proxy, self.st.browser_width, self.st.browser_height, self.st.enable_chrome_ext)
+        # The in-app browser can capture Majsoul websocket frames directly through
+        # Playwright. Avoid routing its heavy static asset traffic through MITM.
+        proxy = self.st.upstream_proxy.strip() or None
+        self.browser.start(
+            ms_url,
+            proxy,
+            self.st.browser_width,
+            self.st.browser_height,
+            self.st.enable_chrome_ext,
+            self.st.prefer_system_chrome,
+        )
     
     def is_browser_zoom_off(self):
         """ check browser zoom level, return true if zoomlevel is not 1"""
@@ -279,7 +288,7 @@ class BotManager:
                 self.fps_counter.frame()
                 self._loop_pre_msg()
                 try:                    
-                    msg = self.mitm_server.get_message()
+                    msg = self._get_next_msg()
                     self._process_msg(msg)                                  
                 except queue.Empty:
                     time.sleep(0.002)
@@ -301,6 +310,15 @@ class BotManager:
         except Exception as e:
             self.main_thread_exception = e
             LOGGER.error("Bot Manager Thread Exception: %s", e, exc_info=True)
+
+    def _get_next_msg(self) -> mitm.WSMessage:
+        """Get the next websocket message from the in-app browser or MITM."""
+        if self.browser:
+            try:
+                return self.browser.get_message()
+            except queue.Empty:
+                pass
+        return self.mitm_server.get_message()
             
     
     def _loop_pre_msg(self):

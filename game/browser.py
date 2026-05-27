@@ -12,6 +12,7 @@ from playwright.sync_api import sync_playwright, BrowserContext, Page
 from common import utils
 from common.utils import Folder, FPSCounter, list_children
 from common.log_helper import LOGGER
+from mitm import WSMessage, WsType
 
 class GameBrowser:
     """ Wrapper for Playwright browser controlling maj-soul operations
@@ -22,6 +23,7 @@ class GameBrowser:
         self.width = width
         self.height = height
         self._action_queue = queue.Queue()       # thread safe queue for actions
+        self._ws_message_queue = queue.Queue()   # thread safe queue for captured websocket frames
         self._stop_event = threading.Event()    # set this event to stop processing actions
         self._browser_thread = None
 
@@ -37,6 +39,7 @@ class GameBrowser:
         self._page_title:str = None
         self._last_update_time:float = 0
         self.zoomlevel_check:float = None
+        self._ws_flow_seq:int = 0
 
         # overlay info
         self._canvas_id = None              # for overlay
@@ -46,13 +49,21 @@ class GameBrowser:
     def __del__(self):
         self.stop()
 
-    def start(self, url:str, proxy:str=None, width:int=None, height:int=None, enable_chrome_ext:bool=False):
+    def start(
+            self,
+            url:str,
+            proxy:str=None,
+            width:int=None,
+            height:int=None,
+            enable_chrome_ext:bool=False,
+            prefer_system_chrome:bool=True):
         """ Launch the browser in a thread, and start processing action queue
         params:
             url(str): url of the page to open upon browser launch
             proxy(str): proxy server to use. e.g. http://1.2.3.4:555"
             width, height: viewport width and height
-            enable_ext: True to enable chrome extensions
+            enable_chrome_ext: True to enable chrome extensions
+            prefer_system_chrome: True to try installed Google Chrome before Playwright Chromium
         """
         # using thread here to avoid playwright sync api not usable in async context (textual) issue
         if self.is_running():
@@ -63,16 +74,22 @@ class GameBrowser:
         if height is not None:
             self.height = height
         self._clear_action_queue()
+        self._clear_ws_message_queue()
         self._stop_event.clear()
         self._browser_thread = threading.Thread(
             target=self._run_browser_and_action_queue,
-            args=(url, proxy, enable_chrome_ext),
+            args=(url, proxy, enable_chrome_ext, prefer_system_chrome),
             name="BrowserThread",
             daemon=True)
         self._browser_thread.start()
 
 
-    def _run_browser_and_action_queue(self, url:str, proxy:str, enable_chrome_ext:bool=False):
+    def _run_browser_and_action_queue(
+            self,
+            url:str,
+            proxy:str,
+            enable_chrome_ext:bool=False,
+            prefer_system_chrome:bool=True):
         """ run browser and keep processing action queue (blocking)"""
         
         if proxy:
@@ -91,13 +108,21 @@ class GameBrowser:
             disable_extensions_except_args = "--disable-extensions-except=" + ",".join(extensions_list)
             load_extension_args = "--load-extension=" + ",".join(extensions_list)
 
-        LOGGER.info('Starting Chromium, viewport=%dx%d, proxy=%s', self.width, self.height, proxy)
+        user_data_dir = utils.sub_folder(Folder.BROWSER_DATA)
+        LOGGER.info(
+            'Starting browser, viewport=%dx%d, proxy=%s, user_data_dir=%s, prefer_system_chrome=%s',
+            self.width,
+            self.height,
+            proxy,
+            user_data_dir,
+            prefer_system_chrome,
+        )
         with sync_playwright() as playwright:
             args = ["--noerrdialogs", "--no-sandbox"]
             if enable_chrome_ext:
                 args.extend([disable_extensions_except_args, load_extension_args])
             launch_kwargs = {
-                "user_data_dir": utils.sub_folder(Folder.BROWSER_DATA),
+                "user_data_dir": user_data_dir,
                 "headless": False,
                 "viewport": {'width': self.width, 'height': self.height},
                 "proxy": proxy_object,
@@ -106,8 +131,8 @@ class GameBrowser:
             }
             try:
                 chromium = playwright.chromium
-                self.context = chromium.launch_persistent_context(**launch_kwargs)
-            except Exception as e:
+                self.context = self._launch_context(chromium, launch_kwargs, prefer_system_chrome)
+            except Exception as launch_error:
                 fallback_executable = self._detect_fallback_chromium_executable()
                 if fallback_executable:
                     try:
@@ -121,12 +146,13 @@ class GameBrowser:
                         LOGGER.error('Error launching browser with fallback executable: %s', e2, exc_info=True)
                         return
                 else:
-                    LOGGER.error('Error launching the browser: %s', e, exc_info=True)
+                    LOGGER.error('Error launching the browser: %s', launch_error, exc_info=True)
                     return
 
             try:
                 self.page = self.context.new_page()
-                self.page.goto(url)
+                self._register_websocket_capture(self.page)
+                self.page.goto(url, wait_until="domcontentloaded")
             except Exception as e:
                 LOGGER.error('Error opening page. Check if certificate is installed. \n%s',e)
 
@@ -149,6 +175,10 @@ class GameBrowser:
                         self.zoomlevel_check = self.page.evaluate("() => window.devicePixelRatio")
                         self._last_update_time = time.time()
                 except Exception as e:
+                    if self.page and not self.page.is_closed():
+                        LOGGER.debug("Transient page update error: %s", e)
+                        self._last_update_time = time.time()
+                        continue
                     LOGGER.warning("Page error %s. exiting.", e)
                     break
 
@@ -175,6 +205,60 @@ class GameBrowser:
                 LOGGER.error('Error closing browser: %s', e ,exc_info=True)
             self.init_vars()
         return
+
+    def _register_websocket_capture(self, page:Page):
+        """Capture Majsoul websocket frames directly from the Playwright page."""
+        def on_websocket(ws):
+            if not self._allow_ws_url(ws.url):
+                LOGGER.debug("Ignoring websocket outside Majsoul domains: %s", ws.url)
+                return
+
+            self._ws_flow_seq += 1
+            flow_id = f"browser:{self._ws_flow_seq}"
+            LOGGER.debug("Browser websocket started: flow=%s, url=%s", flow_id, ws.url)
+            self._ws_message_queue.put(WSMessage(flow_id, time.time(), None, WsType.START))
+            ws.on("framesent", lambda payload: self._queue_ws_frame(flow_id, payload))
+            ws.on("framereceived", lambda payload: self._queue_ws_frame(flow_id, payload))
+            ws.on("close", lambda _ws: self._queue_ws_end(flow_id))
+
+        page.on("websocket", on_websocket)
+
+    def _allow_ws_url(self, url:str) -> bool:
+        """Return True if a websocket URL belongs to Majsoul."""
+        return any(domain in url for domain in utils.MAJSOUL_DOMAINS)
+
+    def _queue_ws_frame(self, flow_id:str, payload):
+        """Queue a websocket payload in the same shape as MITM-captured messages."""
+        if isinstance(payload, str):
+            payload = payload.encode("utf-8")
+        if not isinstance(payload, bytes):
+            LOGGER.debug("Ignoring unsupported websocket payload type: %s", type(payload))
+            return
+        self._ws_message_queue.put(WSMessage(flow_id, time.time(), payload, WsType.MESSAGE))
+
+    def _queue_ws_end(self, flow_id:str):
+        LOGGER.debug("Browser websocket ended: flow=%s", flow_id)
+        self._ws_message_queue.put(WSMessage(flow_id, time.time(), None, WsType.END))
+
+    def _launch_context(self, chromium, launch_kwargs:dict, prefer_system_chrome:bool) -> BrowserContext:
+        """Launch Chrome/Chromium with fallback while keeping the app profile persistent."""
+        attempts = []
+        if prefer_system_chrome:
+            attempts.append(("installed Chrome", {"channel": "chrome"}))
+        attempts.append(("Playwright Chromium", {}))
+
+        last_error = None
+        for label, overrides in attempts:
+            attempt_kwargs = launch_kwargs.copy()
+            attempt_kwargs.update(overrides)
+            try:
+                LOGGER.info("Launching browser via %s", label)
+                return chromium.launch_persistent_context(**attempt_kwargs)
+            except Exception as e:  # pylint:disable=broad-except
+                last_error = e
+                LOGGER.warning("Failed launching browser via %s: %s", label, e)
+
+        raise last_error
 
     def _detect_fallback_chromium_executable(self) -> str | None:
         """Try finding an installed Playwright Chromium executable outside the app bundle."""
@@ -227,6 +311,14 @@ class GameBrowser:
             except queue.Empty:
                 break
 
+    def _clear_ws_message_queue(self):
+        """Clear captured websocket messages."""
+        while True:
+            try:
+                self._ws_message_queue.get_nowait()
+            except queue.Empty:
+                break
+
     def stop(self, join_thread:bool=False):
         """ Shutdown browser thread"""
         if self.is_running():
@@ -249,6 +341,10 @@ class GameBrowser:
                 return True
         else:
             return False
+
+    def get_message(self, block:bool=False, timeout:float=None) -> WSMessage:
+        """Pop a websocket message captured from the Playwright page."""
+        return self._ws_message_queue.get(block, timeout)
 
     def is_overlay_working(self):
         """ return True if overlay is on and working"""

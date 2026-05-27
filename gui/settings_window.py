@@ -83,6 +83,9 @@ class SettingsWindow(tk.Toplevel):
         save_button = ttk.Button(footer, text=self.st.lan().SAVE, command=self._on_save, style="Accent.TButton")
         save_button.grid(row=0, column=2, sticky="e")
 
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind(sequence, self._on_toplevel_mousewheel, add="+")
+
         self._show_section("basic")
 
     def _build_nav(self, parent: ttk.Frame):
@@ -134,6 +137,8 @@ class SettingsWindow(tk.Toplevel):
         page.rowconfigure(0, weight=1)
 
         canvas = tk.Canvas(page, highlightthickness=0, bg=GUI_STYLE.palette["bg"])
+        scrollbar = ttk.Scrollbar(page, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
         content = ttk.Frame(canvas, padding=(2, 2, 12, 8))
         content.columnconfigure(0, weight=1)
 
@@ -149,6 +154,7 @@ class SettingsWindow(tk.Toplevel):
         canvas.bind("<Configure>", _on_canvas_resize)
 
         canvas.grid(row=0, column=0, sticky=tk.NSEW)
+        scrollbar.grid(row=0, column=1, sticky=tk.NS)
         return page, content, canvas
 
     def _bind_mousewheel_tree(self, widget: tk.Widget, canvas: tk.Canvas):
@@ -173,6 +179,24 @@ class SettingsWindow(tk.Toplevel):
             canvas.yview_scroll(delta, "units")
             return "break"
         return None
+
+    def _on_toplevel_mousewheel(self, event):
+        """Fallback scroll handler for macOS where child widgets may not receive wheel events."""
+        canvas = self._section_canvases.get(self._active_section)
+        if canvas and self._event_is_over_widget(event, canvas):
+            return self._on_mousewheel(event, canvas)
+        return None
+
+    @staticmethod
+    def _event_is_over_widget(event, widget: tk.Widget) -> bool:
+        x = getattr(event, "x_root", None)
+        y = getattr(event, "y_root", None)
+        if x is None or y is None:
+            return False
+        return (
+            widget.winfo_rootx() <= x <= widget.winfo_rootx() + widget.winfo_width()
+            and widget.winfo_rooty() <= y <= widget.winfo_rooty() + widget.winfo_height()
+        )
 
     def _show_section(self, section: str):
         """Switch visible section page."""
@@ -243,8 +267,11 @@ class SettingsWindow(tk.Toplevel):
         self.ms_url_var = tk.StringVar(value=self.st.ms_url)
         self._row(browser_group, 3, self.st.lan().MAJSOUL_URL, self._entry(browser_group, self.ms_url_var))
 
+        self.prefer_system_chrome_var = tk.BooleanVar(value=self.st.prefer_system_chrome)
+        self._check_row(browser_group, 4, self.prefer_system_chrome_var, self.st.lan().PREFER_SYSTEM_CHROME)
+
         self.enable_extension_var = tk.BooleanVar(value=self.st.enable_chrome_ext)
-        self._check_row(browser_group, 4, self.enable_extension_var, self.st.lan().ENABLE_CHROME_EXT)
+        self._check_row(browser_group, 5, self.enable_extension_var, self.st.lan().ENABLE_CHROME_EXT)
 
         row += 1
         interface_group = self._group(frame, row, self.st.lan().LANGUAGE)
@@ -634,6 +661,7 @@ class SettingsWindow(tk.Toplevel):
         self.st.browser_width = width_new
         self.st.browser_height = height_new
         self.st.ms_url = ms_url_new
+        self.st.prefer_system_chrome = self.prefer_system_chrome_var.get()
         self.st.enable_chrome_ext = self.enable_extension_var.get()
         self.st.mitm_port = mitm_port_new
         self.st.upstream_proxy = upstream_proxy_new
